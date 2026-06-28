@@ -5,5 +5,5 @@
     "agent": "agent.graph:graph"
   },
   "env": ".env",
-  "image_distro": "wolfi"
+  "python_version": "3.13"
 }

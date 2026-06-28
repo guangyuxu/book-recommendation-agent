@@ -1,0 +1,32 @@
+# Build and run the LangGraph Server locally with docker compose.
+#
+# Postgres / Redis are NOT started by compose — they run on the host 192.168.1.72,
+# and all connection info comes from .env (DATABASE_URL / POSTGRES_URI_CUSTOM / REDIS_URI).
+# The same .env can later be turned into a k8s Secret:
+#   kubectl create secret generic agent-env --from-env-file=.env
+#
+# Usage:
+#   docker compose up --build        # build and start, open http://localhost:8000
+#   docker compose up -d --build     # run in the background
+#   docker compose logs -f agent     # follow logs
+#   docker compose down              # stop
+
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-recommendation-agent:0.0.1
+    container_name: book-recommendation-agent
+    ports:
+      - "8000:8000"          # LangGraph Server / API, open http://localhost:8000/docs
+    env_file:
+      - .env                 # ANTHROPIC / LANGSMITH / DATABASE_URL / POSTGRES_URI_CUSTOM / REDIS_URI all live here
+    restart: unless-stopped
+    healthcheck:
+      # The image ships no curl, so probe with the bundled python; /ok is the LangGraph Server health endpoint
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/ok').getcode()==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

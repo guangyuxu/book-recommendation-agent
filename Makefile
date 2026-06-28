@@ -1,4 +1,6 @@
-.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests
+.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests \
+	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
+	k8s-status k8s-logs k8s-pf k8s-down
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -53,6 +55,61 @@ spell_fix:
 	codespell --toml pyproject.toml -w
 
 ######################
+# DEPLOY (local minikube)
+######################
+
+IMAGE     ?= book-recommendation-agent
+DEPLOY    ?= book-recommendation-agent
+CONTAINER ?= agent
+K8S_NS    ?= book-agent
+
+# Use a unique tag (timestamp) per build to avoid the "same tag won't update" trap.
+# To pin a fixed tag: make redeploy TAG=0.1.0
+DATE := $(shell date +%Y%m%d-%H%M%S)
+TAG  ?= dev-$(DATE)
+
+mk-start:                ## Start minikube (skip if already running)
+	minikube status >/dev/null 2>&1 || minikube start --driver=docker
+
+docker-build:            ## Build the image $(IMAGE):$(TAG)
+	docker build -t $(IMAGE):$(TAG) .
+
+mk-load: docker-build    ## Load the image into minikube (local image, no registry)
+	minikube image load $(IMAGE):$(TAG)
+
+k8s-secret:              ## Create/update the agent-env Secret from .env
+	@test -f .env || { echo "ERROR: .env not found"; exit 1; }
+	kubectl apply -f k8s/namespace.yaml
+	kubectl create secret generic agent-env --from-env-file=.env -n $(K8S_NS) \
+		--dry-run=client -o yaml | kubectl apply -f -
+
+k8s-apply:               ## Apply the namespace / service / deployment manifests
+	kubectl apply -f k8s/namespace.yaml
+	kubectl apply -f k8s/service.yaml -f k8s/deployment.yaml
+
+# First-time deploy: create the Secret, apply manifests, build & load the image, roll to the new tag, wait for rollout.
+deploy: mk-start k8s-secret k8s-apply mk-load
+	kubectl set image deploy/$(DEPLOY) $(CONTAINER)=$(IMAGE):$(TAG) -n $(K8S_NS)
+	kubectl rollout status deploy/$(DEPLOY) -n $(K8S_NS) --timeout=120s
+
+# Redeploy after code changes: build -> load -> roll to the new tag -> wait for rollout (most common).
+redeploy: mk-load
+	kubectl set image deploy/$(DEPLOY) $(CONTAINER)=$(IMAGE):$(TAG) -n $(K8S_NS)
+	kubectl rollout status deploy/$(DEPLOY) -n $(K8S_NS) --timeout=120s
+
+k8s-status:              ## Show pod / service status
+	kubectl get pods,svc -n $(K8S_NS) -o wide
+
+k8s-logs:                ## Follow logs from all pods
+	kubectl logs -n $(K8S_NS) -l app=$(DEPLOY) --tail=80 -f
+
+k8s-pf:                  ## Port-forward to local 8000 (http://localhost:8000/docs)
+	kubectl port-forward -n $(K8S_NS) svc/$(DEPLOY) 8000:8000
+
+k8s-down:                ## Delete the entire book-agent namespace (Secret/Deployment/Service)
+	kubectl delete namespace $(K8S_NS) --ignore-not-found
+
+######################
 # HELP
 ######################
 
@@ -64,4 +121,13 @@ help:
 	@echo 'tests                        - run unit tests'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
+	@echo '--- deploy (minikube) ---'
+	@echo 'deploy                       - first-time deploy: secret + manifests + build/load + rollout'
+	@echo 'redeploy                     - redeploy after code changes: build/load + new tag + rollout (most common)'
+	@echo 'k8s-secret                   - update the Secret from .env (run after editing .env)'
+	@echo 'k8s-status                   - show pod / service status'
+	@echo 'k8s-logs                     - follow pod logs'
+	@echo 'k8s-pf                       - port-forward to localhost:8000'
+	@echo 'k8s-down                     - delete the entire namespace'
+	@echo '  override tag: make redeploy TAG=0.1.0'
 
