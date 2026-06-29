@@ -2,17 +2,24 @@
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from advanced_alchemy.base import AdvancedDeclarativeBase, CommonTableAttributes
 from dotenv import load_dotenv
-from sqlalchemy import JSON, create_engine, text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy import JSON, Text, create_engine, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import Session, sessionmaker
 
 load_dotenv()  # so standalone scripts (e.g. table creation) can read .env too
 
 # Cross-dialect JSON: JSONB on Postgres (indexable), plain JSON elsewhere (e.g. sqlite).
 JSONType = JSON().with_variant(JSONB(), "postgresql")
+
+# Postgres text[] column type, reused by every model with an array column. Mirrors the
+# `text[]` columns in the book_agent schema; on non-Postgres dialects it degrades to JSON.
+TextArray = ARRAY(Text).with_variant(JSON(), "sqlite")
 
 BOOK_AGENT_DATABASE_URL = os.getenv("BOOK_AGENT_DATABASE_URL")
 if not BOOK_AGENT_DATABASE_URL:
@@ -46,8 +53,38 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
-class Base(DeclarativeBase):
-    """Base class for all ORM models."""
+@contextmanager
+def session_scope() -> Iterator[Session]:
+    """Transactional session boundary: commit on success, roll back on error, always close.
+
+    The unit-of-work counterpart to the repositories, whose write methods only flush. Open
+    one scope per request/turn, build repositories on the yielded session, and let this commit:
+
+        with session_scope() as s:
+            FamilyRepository(session=s).add(Family(family_name="..."))
+    """
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+class Base(CommonTableAttributes, AdvancedDeclarativeBase):
+    """Base class for all ORM models.
+
+    Composed from Advanced Alchemy so models share its `orm_registry`/metadata and gain
+    `to_dict()`, while staying compatible with the SQLAlchemySyncRepository. We deliberately
+    do NOT inherit a primary-key mixin (e.g. UUIDBase): those pull in Advanced Alchemy's
+    `sa_orm_sentinel` column, which our DB-first tables don't have. Instead every model
+    declares its own `id`/`created_at`/`updated_at` to mirror the live schema exactly.
+    """
+
+    __abstract__ = True
 
 
 def init_db() -> None:

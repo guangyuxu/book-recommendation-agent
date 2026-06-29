@@ -1,13 +1,15 @@
 """Intent definitions (single source of truth).
 
-Each member carries value(node name) / label / description(for the classifier).
+Each member carries value (used as a stable key) / label / description (shown to the LLM in
+the understand node). Up to two intents may apply to one turn (one primary + one secondary);
+there is no multi_intent member -- the understand node returns primary + optional secondary.
 """
 
 from enum import Enum
 
 
 class Intent(Enum):
-    """The set of user intents the classifier chooses from; each value names one flow."""
+    """The set of user intents the understand node chooses from."""
 
     def __new__(cls, key: str, label: str, description: str) -> "Intent":
         """Set _value_ to key so .value is the plain key string, not the whole tuple."""
@@ -27,8 +29,14 @@ class Intent(Enum):
     BOOK_EVALUATION = (
         "book_evaluation",
         "Book analysis flow",
-        "User asks to assess or discuss a specific book: whether it suits the "
+        "User asks to assess or discuss ONE specific book: whether it suits the "
         "child, its themes, values, reading difficulty, or tendencies.",
+    )
+    BOOK_COMPARISON = (
+        "book_comparison",
+        "Book comparison flow",
+        "User asks to compare TWO OR MORE specific books against each other (which "
+        "is better, more suitable, harder, etc.).",
     )
     CHILD_PROFILE_UPDATE = (
         "child_profile_update",
@@ -66,13 +74,6 @@ class Intent(Enum):
         "Content creation flow",
         "User asks to create content such as articles, copy, or social posts.",
     )
-    MULTI_INTENT = (
-        "multi_intent",
-        "Split flow",
-        "The message combines multiple distinct intents, such as a profile "
-        "update together with a task, or several tasks at once, and must be "
-        "split and handled separately.",
-    )
     CLARIFY = (
         "clarify",
         "Clarification flow",
@@ -86,15 +87,11 @@ class Intent(Enum):
     description: str
 
 
-# Intents that act on a specific child: they need target_child_ids resolved, and trigger
-# clarify when the child is ambiguous. Single source of truth for graph routing,
-# the orchestrator, and resolve. (MULTI_INTENT is excluded -- it resolves per subtask.)
-CHILD_SPECIFIC: frozenset["Intent"] = frozenset(
-    {
-        Intent.BOOK_RECOMMENDATION,
-        Intent.BOOK_EVALUATION,
-        Intent.READING_PATH_PLANNING,
-        Intent.READING_DISCUSSION,
-        Intent.CHILD_PROFILE_UPDATE,
-    }
-)
+def intent_menu() -> str:
+    """Render the intents as a bulleted menu for LLM prompts (understand node)."""
+    return "\n".join(f"- {i.value}: {i.description}" for i in Intent)
+
+
+def to_intent(value: str) -> Intent:
+    """Look up an Intent by its value key (the enum's custom __new__ confuses callers/mypy)."""
+    return Intent(value)  # type: ignore[call-arg]

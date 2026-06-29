@@ -1,0 +1,112 @@
+"""Response: compose the final reply and deterministically persist a recommendation turn.
+
+Composition stitches the capability outputs into one coherent message. Persistence (writing a
+recommendation_session + items) happens here, not via the LLM, and only for actual
+recommendation turns (a recommend result with a booklist and a resolved child) -- flavor A.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from langchain.messages import AIMessage, SystemMessage
+
+from ..domain import (
+    create_recommendation_session,
+    domain_session,
+    save_recommendation_items,
+)
+from ..llm import model
+
+logger = logging.getLogger(__name__)
+
+
+def _last_human_text(messages: list) -> str:
+    for m in reversed(messages):
+        if getattr(m, "type", None) == "human":
+            return str(m.content)
+    return ""
+
+
+def _render_outputs(results: dict) -> str:
+    parts: list[str] = []
+    rec = results.get("recommend")
+    if rec and rec.get("books"):
+        lines = ["Recommended books:"]
+        for i, b in enumerate(rec["books"], start=1):
+            extras = []
+            if b.get("fit_summary"):
+                extras.append(f"fit: {b['fit_summary']}")
+            if b.get("risk_notes"):
+                extras.append(f"watch-outs: {', '.join(b['risk_notes'])}")
+            suffix = f" ({'; '.join(extras)})" if extras else ""
+            author = f" by {b['author']}" if b.get("author") else ""
+            lines.append(f"{i}. {b['title']}{author} — {b.get('recommendation_reason', '')}{suffix}")
+        if rec.get("note"):
+            lines.append(rec["note"])
+        parts.append("\n".join(lines))
+    for name, result in results.items():
+        if name == "recommend":
+            continue
+        if isinstance(result, dict) and result.get("text"):
+            parts.append(result["text"])
+    return "\n\n".join(parts)
+
+
+def _compose(state: dict, rendered: str) -> str:
+    system = SystemMessage(
+        content=(
+            "You are the family's reading assistant. Using the prepared material below, write "
+            "one warm, concise reply to the parent's latest message. Do not invent books or "
+            "facts beyond the material; if there is no material, respond helpfully to the "
+            "message itself.\n\n"
+            f"Prepared material:\n{rendered or '(none)'}"
+        )
+    )
+    reply = model.invoke([system, *state["messages"]])
+    return str(reply.content)
+
+
+def _persist_recommendation(state: dict, response_text: str, rec: dict) -> None:
+    u = state.get("understanding") or {}
+    items = [
+        {
+            "title": b["title"],
+            "author": b.get("author"),
+            "rank": i,
+            "recommendation_reason": b.get("recommendation_reason"),
+            "fit_summary": b.get("fit_summary"),
+            "risk_notes": b.get("risk_notes") or [],
+        }
+        for i, b in enumerate(rec.get("books") or [], start=1)
+    ]
+    with domain_session(state["family"]["id"], state.get("target_child_id")):
+        session_id = create_recommendation_session.invoke(
+            {
+                "primary_intent": u.get("primary_intent") or "book_recommendation",
+                "secondary_intent": u.get("secondary_intent"),
+                "user_message": _last_human_text(state["messages"]),
+                "understanding": u,
+                "plan": state.get("plan") or {},
+                "capability_result": state.get("capability_results") or {},
+                "memory_decision": {"operations": state.get("memory_operations") or []},
+                "response_text": response_text,
+            }
+        )
+        save_recommendation_items.invoke({"session_id": session_id, "items": items})
+
+
+def respond(state: dict) -> dict:
+    """Compose the user-facing reply; persist the turn if it produced a recommendation."""
+    results = state.get("capability_results") or {}
+    rendered = _render_outputs(results)
+    reply_text = _compose(state, rendered)
+
+    rec = results.get("recommend")
+    if rec and rec.get("books") and state.get("target_child_id"):
+        try:
+            _persist_recommendation(state, reply_text, rec)
+        except Exception as exc:  # persistence must not break the user's reply
+            logger.warning("respond: failed to persist recommendation session: %s", exc)
+
+    return {"messages": [AIMessage(content=reply_text)]}

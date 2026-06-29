@@ -1,0 +1,52 @@
+"""Memory Policy: decide what is worth remembering. Emits domain operations; never writes DB.
+
+The output is a list of domain-level operations (e.g. UpdateReadingInterest, RecordFinishedBook)
+that the profile_update node executes via tools.
+"""
+
+from __future__ import annotations
+
+from typing import cast
+
+from langchain.messages import HumanMessage, SystemMessage
+
+from ..llm import model
+from ..schemas import MemoryDecision
+
+_structured = model.with_structured_output(MemoryDecision)
+
+# The domain operations the profile_update agent can carry out (see agent.domain.MEMORY_TOOLS).
+_AVAILABLE_OPERATIONS = (
+    "CreateChild, UpdateChildBasicInfo, UpdateSchoolInformation, UpdateChildNotes, "
+    "UpdateReadingAbility, UpdateReadingInterest, UpdateGenrePreference, "
+    "UpdateThemeTonePreference, UpdateReadingSummary, RecordFinishedBook, "
+    "RecordCurrentReading, RecordDislikedBook, AddFamilyMember, UpdateFamilyReadingPolicy"
+)
+
+
+def memory(state: dict) -> dict:
+    """Decide which durable facts from this turn to persist, as domain operations."""
+    u = state.get("understanding") or {}
+    signals = u.get("user_signals") or []
+    candidates = u.get("memory_candidates") or []
+    if not signals and not candidates and not u.get("child_is_new"):
+        return {"memory_operations": []}
+
+    system = SystemMessage(
+        content=(
+            "You are a memory policy. Decide what from this turn is worth storing long-term "
+            "about the child or family, and express each as a domain operation with plain "
+            "domain arguments (never database ids). Skip transient or already-known facts. If "
+            "the child is new, include CreateChild first.\n\n"
+            f"Available operations: {_AVAILABLE_OPERATIONS}"
+        )
+    )
+    human = HumanMessage(
+        content=(
+            f"child_is_new={u.get('child_is_new')}\n"
+            f"user_signals={signals}\n"
+            f"memory_candidates={candidates}"
+        )
+    )
+    result = cast(MemoryDecision, _structured.invoke([system, human, *state["messages"]]))
+    return {"memory_operations": [op.model_dump() for op in result.operations]}
