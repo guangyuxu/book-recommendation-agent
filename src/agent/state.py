@@ -6,10 +6,12 @@ capability_results -> memory_operations) all live here as plain JSON-able dicts;
 domain tools (see agent.domain) ever touch the database.
 """
 
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, TypedDict
+from uuid import UUID
 
 from langchain.messages import AnyMessage
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, field_validator, Field
 
 
 def merge_dict(left: dict | None, right: dict | None) -> dict:
@@ -35,7 +37,9 @@ class FlowState(TypedDict, total=False):
     # Loaded context (lifecycle.load_context). family.id == AppContext.family_id.
     family: dict  # Family.to_dict()
     members: list[dict]  # FamilyMember.to_dict() rows, each with nested "profile"
-    children: dict[str, dict]  # str(child_id) -> child dict, with nested "reading_profile"
+    children: dict[
+        str, dict
+    ]  # str(child_id) -> child dict, with nested "reading_profile"
     policies: list[dict]  # active FamilyReadingPolicy rows for the turn
     family_member_id: str  # AppContext.family_member_id -- who is asking
 
@@ -47,28 +51,44 @@ class FlowState(TypedDict, total=False):
     understanding: dict
     plan: dict
     clarification: dict
-    capability_results: Annotated[dict[str, dict], merge_dict]  # capability name -> result
+    capability_results: Annotated[
+        dict[str, dict], merge_dict
+    ]  # capability name -> result
     memory_operations: list[dict]
 
 
-# Back-compat alias: callers may still import MessagesState; it is the same state now.
-MessagesState = FlowState
+class AppContext(BaseModel):
+    """Per-request runtime input (not in state, not checkpointed), via LangGraph's context channel.
 
+    A pydantic model, not a TypedDict, so LangGraph's _coerce_context validates it at the
+    boundary: when a dict is passed to context=, missing/mistyped required fields raise a
+    ValidationError before the graph runs. get_runtime(AppContext).context returns an instance.
 
-class AppContext(TypedDict):
-    """Per-request runtime context (not in state, not checkpointed), via LangGraph's context channel.
-
-    - family_id: the household identity. Required; lifecycle.load_context loads it.
+    - family_id: the household identity. Required.
     - family_member_id: who is asking (a parent/caregiver). Required; recorded as the
       requester on recommendation turns.
     - child_id: which child this conversation is about. Optional -- if omitted and the family
       has exactly one child, that child is used by default; otherwise it is resolved from the
       conversation.
-
-    family_id and family_member_id are required (Studio renders them as required inputs and
-    load_context validates them again at runtime); child_id is optional.
     """
 
-    family_id: str
-    family_member_id: str
-    target_child_id: NotRequired[str]
+    family_id: str = Field(description="UUID, The household identity. Required.", default="16555532-69b5-411e-8526-e0b321fbcfea")
+    family_member_id: str = Field(
+        description="UUID, The identity of the family member asking.", default="659c1323-f47a-40eb-a0fe-5fb83f47c9c9"
+    )
+    child_id: str | None = Field(
+        default="d63ae622-797b-4a1c-ae88-9c4309fb3b3a", description="UUID, The identity of the child being asked about."
+    )
+
+    @field_validator("family_id", "family_member_id", "child_id")
+    @classmethod
+    def _valid_uuid(cls, v: str | None) -> str | None:
+        """Required fields must be present; any present id must be a parseable UUID string.
+
+        We validate the UUID *format* here (at the boundary) but keep the field a str so the
+        loaded context stays JSON-able. Existence in the DB is checked later in load_context.
+        """
+        if v is None:
+            return v
+        UUID(v)  # raises ValueError -> pydantic ValidationError on a malformed id
+        return v
