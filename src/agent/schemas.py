@@ -39,13 +39,6 @@ class UserSignal(BaseModel):
     detail: str
 
 
-class MemoryCandidate(BaseModel):
-    """A hint that something may be worth persisting, named at the domain-operation level."""
-
-    operation_hint: str  # e.g. "UpdateReadingInterest", "RecordFinishedBook"
-    detail: str
-
-
 class Understanding(BaseModel):
     """Structured reading of the latest message. No business logic, no DB."""
 
@@ -57,7 +50,6 @@ class Understanding(BaseModel):
     mentioned_books: list[MentionedBook] = Field(default_factory=list)
     user_signals: list[UserSignal] = Field(default_factory=list)
     planner_hints: list[str] = Field(default_factory=list)
-    memory_candidates: list[MemoryCandidate] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _at_most_two_distinct_intents(self) -> Understanding:

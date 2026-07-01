@@ -10,26 +10,22 @@ from typing import cast
 
 from langchain.messages import HumanMessage, SystemMessage
 
+from ..domain import MEMORY_TOOLS_BY_NAME
 from ..llm import model
 from ..schemas import MemoryDecision
 
 _structured = model.with_structured_output(MemoryDecision)
 
-# The domain operations the profile_update agent can carry out (see agent.domain.MEMORY_TOOLS).
-_AVAILABLE_OPERATIONS = (
-    "CreateChild, UpdateChildBasicInfo, UpdateSchoolInformation, UpdateChildNotes, "
-    "UpdateReadingAbility, UpdateReadingInterest, UpdateGenrePreference, "
-    "UpdateThemeTonePreference, UpdateReadingSummary, RecordFinishedBook, "
-    "RecordCurrentReading, RecordDislikedBook, AddFamilyMember, UpdateFamilyReadingPolicy"
-)
+# The domain operations the profile_update agent can carry out. Derived from the single source
+# of truth (agent.domain.MEMORY_TOOLS) so it can never drift from the executable tool names.
+_AVAILABLE_OPERATIONS = ", ".join(MEMORY_TOOLS_BY_NAME)
 
 
 def memory(state: dict) -> dict:
     """Decide which durable facts from this turn to persist, as domain operations."""
     u = state.get("understanding") or {}
     signals = u.get("user_signals") or []
-    candidates = u.get("memory_candidates") or []
-    if not signals and not candidates and not u.get("child_is_new"):
+    if not signals and not u.get("child_is_new"):
         return {"memory_operations": []}
 
     system = SystemMessage(
@@ -44,8 +40,7 @@ def memory(state: dict) -> dict:
     human = HumanMessage(
         content=(
             f"child_is_new={u.get('child_is_new')}\n"
-            f"user_signals={signals}\n"
-            f"memory_candidates={candidates}"
+            f"user_signals={signals}"
         )
     )
     result = cast(MemoryDecision, _structured.invoke([system, human, *state["messages"]]))

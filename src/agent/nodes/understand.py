@@ -45,7 +45,7 @@ def understand(state: dict) -> dict:
             "child's exact id in target_child_id. If the message describes a child not on the "
             "roster, set child_is_new. If a child is needed but you cannot tell which, set "
             "child_ambiguous. Also extract mentioned_books, user_signals (profile-relevant "
-            "facts), planner_hints, and memory_candidates.\n\n"
+            "facts), and planner_hints.\n\n"
             f"Children roster:\n{_roster(children)}"
         )
     )
