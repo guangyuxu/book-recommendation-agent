@@ -80,7 +80,11 @@ def _persist_recommendation(state: dict, response_text: str, rec: dict) -> None:
         }
         for i, b in enumerate(rec.get("books") or [], start=1)
     ]
-    with domain_session(state["family"]["id"], state.get("target_child_id")):
+    with domain_session(
+        state["family"]["id"],
+        state.get("target_child_id"),
+        requester_member_id=state.get("family_member_id"),
+    ):
         session_id = create_recommendation_session.invoke(
             {
                 "primary_intent": u.get("primary_intent") or "book_recommendation",
@@ -91,6 +95,7 @@ def _persist_recommendation(state: dict, response_text: str, rec: dict) -> None:
                 "capability_result": state.get("capability_results") or {},
                 "memory_decision": {"operations": state.get("memory_operations") or []},
                 "response_text": response_text,
+                "requester_member_id": state.get("family_member_id"),
             }
         )
         save_recommendation_items.invoke({"session_id": session_id, "items": items})

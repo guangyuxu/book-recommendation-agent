@@ -1,4 +1,4 @@
-"""Repository for the `reading_history` table (books a child has read)."""
+"""Repository for the reading domain: a child's reading history."""
 
 from __future__ import annotations
 

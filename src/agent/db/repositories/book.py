@@ -1,4 +1,4 @@
-"""Repository for the `book_cache` table (cached book metadata)."""
+"""Repository for the catalog domain: cached book metadata."""
 
 from __future__ import annotations
 

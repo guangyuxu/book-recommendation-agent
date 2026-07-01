@@ -1,4 +1,4 @@
-"""Database layer: engine/session/config (from .env), ORM models, and per-table repositories."""
+"""Database layer: engine/session/config (from .env), ORM models, and per-domain repositories."""
 
 from .base import (
     Base,
@@ -15,6 +15,7 @@ from .models import (
     ChildReadingProfile,
     Family,
     FamilyMember,
+    FamilyMemberProfile,
     FamilyReadingPolicy,
     ReadingHistory,
     RecommendationFeedback,
@@ -25,6 +26,7 @@ from .repositories import (
     BookCacheRepository,
     ChildProfileRepository,
     ChildReadingProfileRepository,
+    FamilyMemberProfileRepository,
     FamilyMemberRepository,
     FamilyReadingPolicyRepository,
     FamilyRepository,
@@ -46,6 +48,7 @@ __all__ = [
     # models
     "Family",
     "FamilyMember",
+    "FamilyMemberProfile",
     "ChildProfile",
     "ChildReadingProfile",
     "FamilyReadingPolicy",
@@ -57,6 +60,7 @@ __all__ = [
     # repositories
     "FamilyRepository",
     "FamilyMemberRepository",
+    "FamilyMemberProfileRepository",
     "ChildProfileRepository",
     "ChildReadingProfileRepository",
     "FamilyReadingPolicyRepository",

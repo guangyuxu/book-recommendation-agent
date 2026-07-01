@@ -7,6 +7,7 @@ caller passes.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -14,13 +15,15 @@ from langchain_core.tools import tool
 from ..db import (
     Family,
     FamilyMember,
+    FamilyMemberProfile,
+    FamilyMemberProfileRepository,
     FamilyMemberRepository,
     FamilyReadingPolicy,
     FamilyReadingPolicyRepository,
     FamilyRepository,
 )
-from .context import current
-from .util import merge_unique
+from .context import current, require_member_id
+from .util import merge_unique, remove_all
 
 
 @tool
@@ -37,15 +40,12 @@ def add_family_member(
     role: str,
     display_name: str | None = None,
     is_primary_user: bool = False,
-    occupation_background: str | None = None,
-    education_background: str | None = None,
-    communication_style: str | None = None,
-    concerns: list[str] | None = None,
     language_preference: str | None = None,
 ) -> str:
     """Add a parent or caregiver to the current family.
 
-    `role` describes the relationship (e.g. "mother", "father", "caregiver").
+    `role` describes the relationship (e.g. "mother", "father", "caregiver"). This records only
+    identity; conversation-extracted background goes to update_member_profile.
     """
     ctx = current()
     member = FamilyMember(
@@ -54,14 +54,48 @@ def add_family_member(
         role=role,
         display_name=display_name,
         is_primary_user=is_primary_user,
-        occupation_background=occupation_background,
-        education_background=education_background,
-        communication_style=communication_style,
-        concerns=concerns or [],
         language_preference=language_preference,
     )
     FamilyMemberRepository(session=ctx.session).add(member)
     return f"Added family member {display_name or role} ({member.id})."
+
+
+@tool
+def update_member_profile(
+    occupation_background: str | None = None,
+    education_background: str | None = None,
+    communication_style: str | None = None,
+    add_concerns: list[str] | None = None,
+    remove_concerns: list[str] | None = None,
+    confidence: float | None = None,
+    source: str = "parent_report",
+) -> str:
+    """Update the requesting member's background profile (occupation, education, style, concerns).
+
+    Acts on the turn's requester (the parent/caregiver who is asking); creates their profile on
+    demand. Concerns are merged into the existing list, deduped.
+    """
+    ctx = current()
+    repo = FamilyMemberProfileRepository(session=ctx.session)
+    member_id = require_member_id()
+    profile = repo.get_by_member(member_id)
+    created = profile is None
+    if profile is None:
+        profile = FamilyMemberProfile(id=uuid4(), member_id=member_id)
+    for field, value in (
+        ("occupation_background", occupation_background),
+        ("education_background", education_background),
+        ("communication_style", communication_style),
+        ("confidence", None if confidence is None else Decimal(str(confidence))),
+    ):
+        if value is not None:
+            setattr(profile, field, value)
+    profile.concerns = remove_all(
+        merge_unique(profile.concerns, add_concerns), remove_concerns
+    )
+    profile.source = source
+    repo.add(profile) if created else repo.update(profile)
+    return f"Updated member profile for {member_id}."
 
 
 @tool

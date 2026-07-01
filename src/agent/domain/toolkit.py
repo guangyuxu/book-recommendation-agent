@@ -16,7 +16,11 @@ from .child import (
     update_child_notes,
     update_school_information,
 )
-from .family import add_family_member, update_family_reading_policy
+from .family import (
+    add_family_member,
+    update_family_reading_policy,
+    update_member_profile,
+)
 from .reading_history import (
     record_current_reading,
     record_disliked_book,
@@ -48,6 +52,7 @@ MEMORY_TOOLS: list[BaseTool] = [
     record_disliked_book,
     # Family
     add_family_member,
+    update_member_profile,
     update_family_reading_policy,
 ]
 

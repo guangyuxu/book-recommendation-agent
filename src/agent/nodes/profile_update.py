@@ -41,7 +41,9 @@ def profile_update(state: dict) -> dict:
         for o in operations
     ) or "(none listed)"
 
-    with domain_session(family_id, target) as ctx:
+    with domain_session(
+        family_id, target, requester_member_id=state.get("family_member_id")
+    ) as ctx:
         system = SystemMessage(
             content=(
                 "You persist what was decided this turn by calling the available domain tools. "

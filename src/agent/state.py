@@ -6,7 +6,7 @@ capability_results -> memory_operations) all live here as plain JSON-able dicts;
 domain tools (see agent.domain) ever touch the database.
 """
 
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from langchain.messages import AnyMessage
 from langgraph.graph.message import add_messages
@@ -32,13 +32,15 @@ class FlowState(TypedDict, total=False):
 
     messages: Annotated[list[AnyMessage], add_messages]
 
-    # Loaded context (lifecycle.load_context). family.id == AppContext.user_id.
+    # Loaded context (lifecycle.load_context). family.id == AppContext.family_id.
     family: dict  # Family.to_dict()
-    members: list[dict]  # FamilyMember.to_dict() rows
+    members: list[dict]  # FamilyMember.to_dict() rows, each with nested "profile"
     children: dict[str, dict]  # str(child_id) -> child dict, with nested "reading_profile"
     policies: list[dict]  # active FamilyReadingPolicy rows for the turn
+    family_member_id: str  # AppContext.family_member_id -- who is asking
 
-    # The single target child (resolved by the understand node).
+    # The single target child: pinned by load_context (explicit child_id or sole child) or
+    # resolved by the understand node.
     target_child_id: str | None
 
     # Per-stage products. Dicts are model_dump()s of the pydantic schemas in agent.schemas.
@@ -56,8 +58,17 @@ MessagesState = FlowState
 class AppContext(TypedDict):
     """Per-request runtime context (not in state, not checkpointed), via LangGraph's context channel.
 
-    user_id is the family's id (the household login identity). It is required: Studio renders
-    it as a required input and lifecycle.load_context validates it again at runtime.
+    - family_id: the household identity. Required; lifecycle.load_context loads it.
+    - family_member_id: who is asking (a parent/caregiver). Required; recorded as the
+      requester on recommendation turns.
+    - child_id: which child this conversation is about. Optional -- if omitted and the family
+      has exactly one child, that child is used by default; otherwise it is resolved from the
+      conversation.
+
+    family_id and family_member_id are required (Studio renders them as required inputs and
+    load_context validates them again at runtime); child_id is optional.
     """
 
-    user_id: str
+    family_id: str
+    family_member_id: str
+    target_child_id: NotRequired[str]

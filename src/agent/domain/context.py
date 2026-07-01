@@ -30,6 +30,7 @@ class DomainContext:
     session: Session
     family_id: UUID
     target_child_id: UUID | None = None
+    requester_member_id: UUID | None = None
 
 
 _ctx: contextvars.ContextVar[DomainContext | None] = contextvars.ContextVar(
@@ -61,10 +62,21 @@ def require_child_id() -> UUID:
     return ctx.target_child_id
 
 
+def require_member_id() -> UUID:
+    """Return the turn's requester member id, or raise if none is bound (tool needs a member)."""
+    ctx = current()
+    if ctx.requester_member_id is None:
+        raise RuntimeError(
+            "This operation needs a requester member, but none is set for this turn."
+        )
+    return ctx.requester_member_id
+
+
 @contextmanager
 def domain_session(
     family_id: UUID | str,
     target_child_id: UUID | str | None = None,
+    requester_member_id: UUID | str | None = None,
     *,
     session: Session | None = None,
 ) -> Iterator[DomainContext]:
@@ -76,9 +88,10 @@ def domain_session(
     fid = _as_uuid(family_id)
     assert fid is not None  # noqa: S101 -- family_id is always required
     cid = _as_uuid(target_child_id)
+    mid = _as_uuid(requester_member_id)
 
     def _run(s: Session) -> Iterator[DomainContext]:
-        ctx = DomainContext(s, fid, cid)
+        ctx = DomainContext(s, fid, cid, mid)
         token = _ctx.set(ctx)
         try:
             yield ctx

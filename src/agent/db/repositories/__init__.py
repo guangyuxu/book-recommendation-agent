@@ -1,29 +1,36 @@
-"""Per-table repositories: one Advanced Alchemy SQLAlchemySyncRepository subclass per table.
+"""Per-domain repositories: Advanced Alchemy SQLAlchemySyncRepository subclasses, one per table.
 
-Build them on a session (see db.base.session_scope), one per request -- note `session` is a
-keyword-only argument:
+Grouped by domain (mirroring db.models), and re-exported here so callers keep a flat import:
 
     from agent.db import session_scope
     from agent.db.repositories import ChildProfileRepository
 
     with session_scope() as s:
         children = ChildProfileRepository(session=s).list_by_family(family_id)
+
+Build them on a session (see db.base.session_scope), one per request -- note `session` is a
+keyword-only argument.
 """
 
-from .book_cache import BookCacheRepository
-from .child_profile import ChildProfileRepository
-from .child_reading_profile import ChildReadingProfileRepository
-from .family import FamilyRepository
-from .family_member import FamilyMemberRepository
-from .family_reading_policy import FamilyReadingPolicyRepository
-from .reading_history import ReadingHistoryRepository
-from .recommendation_feedback import RecommendationFeedbackRepository
-from .recommendation_item import RecommendationItemRepository
-from .recommendation_session import RecommendationSessionRepository
+from .book import BookCacheRepository
+from .child import ChildProfileRepository, ChildReadingProfileRepository
+from .family import (
+    FamilyMemberProfileRepository,
+    FamilyMemberRepository,
+    FamilyReadingPolicyRepository,
+    FamilyRepository,
+)
+from .reading import ReadingHistoryRepository
+from .recommendation import (
+    RecommendationFeedbackRepository,
+    RecommendationItemRepository,
+    RecommendationSessionRepository,
+)
 
 __all__ = [
     "FamilyRepository",
     "FamilyMemberRepository",
+    "FamilyMemberProfileRepository",
     "ChildProfileRepository",
     "ChildReadingProfileRepository",
     "FamilyReadingPolicyRepository",

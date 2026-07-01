@@ -22,6 +22,8 @@ async def test_recommendation_turn_end_to_end() -> None:
         ChildProfile,
         ChildProfileRepository,
         Family,
+        FamilyMember,
+        FamilyMemberRepository,
         FamilyRepository,
         RecommendationSessionRepository,
         session_scope,
@@ -29,9 +31,13 @@ async def test_recommendation_turn_end_to_end() -> None:
     from agent.graph import graph
 
     family_id = uuid.uuid4()
+    member_id = uuid.uuid4()
     child_id = uuid.uuid4()
     with session_scope() as s:
         FamilyRepository(session=s).add(Family(id=family_id, family_name="IT Family"))
+        FamilyMemberRepository(session=s).add(
+            FamilyMember(id=member_id, family_id=family_id, role="mother", is_primary_user=True)
+        )
         ChildProfileRepository(session=s).add(
             ChildProfile(id=child_id, family_id=family_id, display_name="Iris", age=8)
         )
@@ -39,7 +45,7 @@ async def test_recommendation_turn_end_to_end() -> None:
     try:
         result = await graph.ainvoke(
             {"messages": [HumanMessage("Recommend books for my 8-year-old who loves dragons")]},
-            context={"user_id": str(family_id)},
+            context={"family_id": str(family_id), "family_member_id": str(member_id)},
         )
         assert result["messages"], "expected at least one reply"
         assert result["messages"][-1].type == "ai"

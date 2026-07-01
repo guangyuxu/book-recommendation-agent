@@ -51,10 +51,12 @@ def understand(state: dict) -> dict:
     )
     u = cast(Understanding, _structured.invoke([system, *state["messages"]]))
 
-    # Single-child conversations are unambiguous: pin the target without trusting the LLM.
-    if len(children) == 1 and not u.child_is_new:
-        u.target_child_id = next(iter(children))
+    preset = state.get("target_child_id")
+    if preset:
+        # load_context already pinned the child (explicit child_id or sole child): trust it.
+        u.target_child_id = preset
         u.child_ambiguous = False
+        u.child_is_new = False
     # Drop a hallucinated id that isn't on the roster.
     elif u.target_child_id and u.target_child_id not in children:
         u.target_child_id = None

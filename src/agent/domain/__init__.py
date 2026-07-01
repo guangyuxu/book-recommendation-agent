@@ -13,7 +13,12 @@ from .child import (
     update_school_information,
 )
 from .context import DomainContext, current, domain_session, require_child_id
-from .family import add_family_member, create_family, update_family_reading_policy
+from .family import (
+    add_family_member,
+    create_family,
+    update_family_reading_policy,
+    update_member_profile,
+)
 from .reading_history import (
     record_current_reading,
     record_disliked_book,
@@ -46,6 +51,7 @@ __all__ = [
     # family
     "create_family",
     "add_family_member",
+    "update_member_profile",
     "update_family_reading_policy",
     # child
     "create_child",
