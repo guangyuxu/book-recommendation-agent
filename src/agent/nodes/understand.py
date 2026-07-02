@@ -44,24 +44,24 @@ def understand(state: dict) -> dict:
             "Resolve which child the message is about using the roster below: return that "
             "child's exact id in target_child_id. If the message describes a child not on the "
             "roster, set child_is_new. If a child is needed but you cannot tell which, set "
-            "child_ambiguous. Also extract mentioned_books, user_signals (profile-relevant "
-            "facts), and planner_hints.\n\n"
+            "child_ambiguous. Also extract mentioned_books and user_signals "
+            "(profile-relevant facts).\n\n"
             f"Children roster:\n{_roster(children)}"
         )
     )
-    u = cast(Understanding, _structured.invoke([system, *state["messages"]]))
+    understanding = cast(Understanding, _structured.invoke([system, *state["messages"]]))
 
     preset = state.get("target_child_id")
     if preset:
         # load_context already pinned the child (explicit child_id or sole child): trust it.
-        u.target_child_id = preset
-        u.child_ambiguous = False
-        u.child_is_new = False
+        understanding.target_child_id = preset
+        understanding.child_ambiguous = False
+        understanding.child_is_new = False
     # Drop a hallucinated id that isn't on the roster.
-    elif u.target_child_id and u.target_child_id not in children:
-        u.target_child_id = None
+    elif understanding.target_child_id and understanding.target_child_id not in children:
+        understanding.target_child_id = None
 
     return {
-        "understanding": u.model_dump(mode="json"),
-        "target_child_id": u.target_child_id,
+        "understanding": understanding.model_dump(mode="json"),
+        "target_child_id": understanding.target_child_id,
     }

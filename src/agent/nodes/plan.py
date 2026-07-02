@@ -50,8 +50,7 @@ def plan(state: dict) -> dict:
     human = HumanMessage(
         content=(
             f"primary_intent={u.get('primary_intent')}, secondary_intent={u.get('secondary_intent')}\n"
-            f"mentioned_books={u.get('mentioned_books')}\n"
-            f"planner_hints={u.get('planner_hints')}"
+            f"mentioned_books={u.get('mentioned_books')}"
         )
     )
     result = cast(Plan, _structured.invoke([system, human]))

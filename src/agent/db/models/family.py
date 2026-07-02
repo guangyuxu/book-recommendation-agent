@@ -38,7 +38,7 @@ class Family(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     family_name: Mapped[str | None] = mapped_column(Text)
     default_language: Mapped[str | None] = mapped_column(
-        Text, server_default=text("'us-EN'")
+        Text, server_default=text("'en-US'")
     )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()

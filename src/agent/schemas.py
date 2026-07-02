@@ -49,7 +49,6 @@ class Understanding(BaseModel):
     child_ambiguous: bool = False  # a child is needed but which one is unclear
     mentioned_books: list[MentionedBook] = Field(default_factory=list)
     user_signals: list[UserSignal] = Field(default_factory=list)
-    planner_hints: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _at_most_two_distinct_intents(self) -> Understanding:
