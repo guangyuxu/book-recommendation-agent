@@ -24,36 +24,77 @@ class MentionedBook(BaseModel):
 
 
 class UserSignal(BaseModel):
-    """One profile-relevant fact the user revealed (fuel for Memory Policy)."""
+    """One profile-relevant fact the user revealed (fuel for Memory Policy).
 
-    kind: Literal[
-        "interest",
-        "ability",
-        "finished_book",
-        "disliked_book",
-        "current_reading",
-        "goal",
-        "constraint",
-        "other",
-    ]
+    Deliberately coarse: `about` + `kind` are only a rough subject/type tag. Mapping a signal to
+    a specific domain operation/tool is Memory Policy's job -- it reads the tool menu and the
+    free-text `detail`, so understand stays DB-agnostic and need not track the tool taxonomy.
+    """
+
+    about: Literal["child", "member", "family"] = Field(
+        description=(
+            "Whose fact this is. 'child' = the target child (reading level, tastes, book "
+            "events). 'member' = the speaking parent/caregiver themselves (their own taste, "
+            "parenting style, available time, concerns). 'family' = a household-level goal or "
+            "constraint that applies regardless of person."
+        )
+    )
+    kind: Literal["preference", "attribute", "activity", "goal", "constraint", "other"] = Field(
+        description=(
+            "Coarse, subject-independent type of the fact. 'preference' = likes/dislikes/tastes; "
+            "'attribute' = a stable trait or fact (age, reading level, occupation, available "
+            "time); 'activity' = something done or in progress (finished or currently reading a "
+            "book); 'goal' = a desired outcome; 'constraint' = a limit or something to avoid; "
+            "'other' = anything else. Keep it rough -- Memory Policy maps `detail` to the exact "
+            "domain operation."
+        )
+    )
     detail: str
+
+
+class ChildRef(BaseModel):
+    """Which roster child (if any) the MESSAGE itself points to -- evidence only.
+
+    Reconciliation with the pinned/active child is NOT done here; the understand node feeds this
+    to a deterministic resolver (resolve_child). Do not consider any "currently selected" child
+    when filling this -- report only what the message says.
+    """
+
+    status: Literal["matched", "new", "ambiguous", "none"] = Field(
+        default="none",
+        description=(
+            "'matched' = the message clearly refers to a specific child on the roster (set "
+            "child_id); 'new' = it describes a child NOT on the roster; 'ambiguous' = it refers "
+            "to a child but which one is unclear; 'none' = it does not single out any child."
+        ),
+    )
+    child_id: str | None = None  # roster id, set only when status == "matched"
 
 
 class Understanding(BaseModel):
     """Structured reading of the latest message. No business logic, no DB."""
 
-    primary_intent: Intent
-    secondary_intent: Intent | None = None  # at most one; must differ from primary
-    target_child_id: str | None = None  # resolved roster id, if determinable
-    child_is_new: bool = False  # message describes a child not on the roster
-    child_ambiguous: bool = False  # a child is needed but which one is unclear
+    intents: list[Intent] = Field(
+        default_factory=list,
+        description=(
+            "Every intent that genuinely, independently applies to this message -- a run-on "
+            "message may carry several (e.g. recommend + discuss + write a post). Order by "
+            "prominence, most central first. Empty only if nothing actionable applies."
+        ),
+    )
+    child_ref: ChildRef = Field(default_factory=ChildRef)
     mentioned_books: list[MentionedBook] = Field(default_factory=list)
     user_signals: list[UserSignal] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _at_most_two_distinct_intents(self) -> Understanding:
-        if self.secondary_intent == self.primary_intent:
-            self.secondary_intent = None
+    def _dedupe_intents(self) -> Understanding:
+        seen: set[Intent] = set()
+        deduped: list[Intent] = []
+        for intent in self.intents:
+            if intent not in seen:
+                seen.add(intent)
+                deduped.append(intent)
+        self.intents = deduped
         return self
 
 

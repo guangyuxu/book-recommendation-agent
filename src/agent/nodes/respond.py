@@ -46,10 +46,12 @@ def _render_outputs(results: dict) -> str:
             lines.append(rec["note"])
         parts.append("\n".join(lines))
     for name, result in results.items():
-        if name == "recommend":
+        if name == "recommend" or not isinstance(result, dict):
             continue
-        if isinstance(result, dict) and result.get("text"):
-            parts.append(result["text"])
+        # Prose capabilities carry a single string value under their produced-resource key.
+        prose = next((v for v in result.values() if isinstance(v, str) and v.strip()), None)
+        if prose:
+            parts.append(prose)
     return "\n\n".join(parts)
 
 
@@ -87,8 +89,7 @@ def _persist_recommendation(state: dict, response_text: str, rec: dict) -> None:
     ):
         session_id = create_recommendation_session.invoke(
             {
-                "primary_intent": u.get("primary_intent") or "book_recommendation",
-                "secondary_intent": u.get("secondary_intent"),
+                "intents": u.get("intents") or [],
                 "user_message": _last_human_text(state["messages"]),
                 "understanding": u,
                 "plan": state.get("plan") or {},

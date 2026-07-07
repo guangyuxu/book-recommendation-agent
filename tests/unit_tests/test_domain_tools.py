@@ -8,6 +8,7 @@ No LLM and no Postgres are involved.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
 from sqlalchemy import create_engine
@@ -18,6 +19,7 @@ from agent.db import (
     ChildReadingProfileRepository,
     Family,
     FamilyReadingPolicyRepository,
+    Gender,
     ReadingHistoryRepository,
 )
 from agent.db.base import Base
@@ -55,13 +57,18 @@ def _seed_family(s: Session) -> uuid.UUID:
 def test_create_child_sets_target_and_seeds_reading_profile(session: Session) -> None:
     fid = _seed_family(session)
     with domain_session(fid, None, session=session) as ctx:
-        out = create_child.invoke({"display_name": "Mia", "age": 8})
+        out = create_child.invoke(
+            {"display_name": "Mia", "gender": "Female", "birth_date": "2016-05-01"}
+        )
         assert "Created child" in out
         child_id = ctx.target_child_id  # create_child promoted the new child to the target
         assert child_id is not None
 
     children = ChildProfileRepository(session=session).list_by_family(fid)
     assert [c.display_name for c in children] == ["Mia"]
+    # gender/birth_date persist; age is derived from birth_date, never stored.
+    assert children[0].gender == Gender.FEMALE
+    assert children[0].birth_date == date(2016, 5, 1)
     # create_child also seeds the 1:1 reading profile.
     assert ChildReadingProfileRepository(session=session).get_by_child(child_id) is not None
 
@@ -69,7 +76,7 @@ def test_create_child_sets_target_and_seeds_reading_profile(session: Session) ->
 def test_update_reading_interest_and_genre_merge(session: Session) -> None:
     fid = _seed_family(session)
     with domain_session(fid, None, session=session) as ctx:
-        create_child.invoke({"display_name": "Leo", "age": 10})
+        create_child.invoke({"display_name": "Leo"})
         child_id = ctx.target_child_id
         update_reading_interest.invoke({"add_interests": ["dragons", "space"]})
         update_reading_interest.invoke({"add_interests": ["space"], "remove_interests": ["dragons"]})
@@ -84,7 +91,7 @@ def test_update_reading_interest_and_genre_merge(session: Session) -> None:
 def test_record_finished_book_upserts_by_title(session: Session) -> None:
     fid = _seed_family(session)
     with domain_session(fid, None, session=session) as ctx:
-        create_child.invoke({"display_name": "Ada", "age": 9})
+        create_child.invoke({"display_name": "Ada"})
         child_id = ctx.target_child_id
         record_finished_book.invoke(
             {"title": "Percy Jackson", "author": "Rick Riordan", "liked": True}
@@ -101,7 +108,7 @@ def test_record_finished_book_upserts_by_title(session: Session) -> None:
 def test_update_family_reading_policy_child_scoped(session: Session) -> None:
     fid = _seed_family(session)
     with domain_session(fid, None, session=session) as ctx:
-        create_child.invoke({"display_name": "Sam", "age": 7})
+        create_child.invoke({"display_name": "Sam"})
         update_family_reading_policy.invoke({"goals": ["build empathy"], "avoid_topics": ["gore"]})
         update_family_reading_policy.invoke({"goals": ["build empathy", "grow vocabulary"]})
         child_id = ctx.target_child_id

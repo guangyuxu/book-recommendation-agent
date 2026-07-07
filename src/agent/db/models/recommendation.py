@@ -36,8 +36,7 @@ class RecommendationSession(Base):
     target_child_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("child_profile.id"), nullable=False
     )
-    primary_intent: Mapped[str] = mapped_column(Text, nullable=False)
-    secondary_intent: Mapped[str | None] = mapped_column(Text)
+    intents: Mapped[list] = mapped_column(JSONType, server_default=text("'[]'"))
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
     understanding: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
     plan: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))

@@ -38,6 +38,7 @@ def child_brief(state: dict) -> str:
     lines = _kv_lines(
         [
             ("name", child.get("display_name")),
+            ("gender", child.get("gender")),
             ("age", child.get("age")),
             ("grade", child.get("grade")),
             ("reading_language", child.get("reading_language")),
@@ -75,17 +76,52 @@ def mentioned_books(state: dict) -> list[dict]:
     return (state.get("understanding") or {}).get("mentioned_books") or []
 
 
-def run_text(state: dict, instructions: str) -> dict:
+def _render_dep_result(name: str, result: dict) -> str:
+    """Render one dependency's output as a prompt line (books structured, prose verbatim)."""
+    books = result.get("books")
+    if isinstance(books, list) and books:
+        titles = ", ".join(
+            (b.get("title") or "") + (f" by {b['author']}" if b.get("author") else "")
+            for b in books
+            if isinstance(b, dict) and b.get("title")
+        )
+        note = result.get("note")
+        return f"- {name} recommended: {titles}" + (f" ({note})" if note else "")
+    for value in result.values():  # prose capabilities carry a single string
+        if isinstance(value, str) and value.strip():
+            return f"- {name}:\n{value}"
+    return ""
+
+
+def upstream_brief(state: dict) -> str:
+    """Render the current step's dependency outputs as a prompt block, or "" if none.
+
+    execute injects `_current_step` (with its depends_on); we pull those producers' results from
+    capability_results so a consumer capability actually sees what upstream produced this turn.
+    """
+    deps = (state.get("_current_step") or {}).get("depends_on") or []
+    results = state.get("capability_results") or {}
+    parts = [
+        rendered
+        for dep in deps
+        if isinstance(results.get(dep), dict)
+        and (rendered := _render_dep_result(dep, results[dep]))
+    ]
+    return "From earlier steps this turn:\n" + "\n\n".join(parts) if parts else ""
+
+
+def run_text(state: dict, instructions: str) -> str:
     """Run a one-shot LLM call over the conversation with capability instructions.
 
-    Returns {"text": <reply>}. Used by capabilities whose output is prose.
+    Returns the reply text. Callers wrap it under their produced-resource key, e.g.
+    `{"evaluation": run_text(...)}`.
     """
-    system = SystemMessage(
-        content=(
-            f"{instructions}\n\n"
-            f"Target child profile:\n{child_brief(state)}\n\n"
-            f"Family reading policies:\n{policies_brief(state)}"
-        )
-    )
-    reply = model.invoke([system, *state["messages"]])
-    return {"text": str(reply.content)}
+    blocks = [
+        instructions,
+        f"Target child profile:\n{child_brief(state)}",
+        f"Family reading policies:\n{policies_brief(state)}",
+    ]
+    if upstream := upstream_brief(state):
+        blocks.append(upstream)
+    reply = model.invoke([SystemMessage(content="\n\n".join(blocks)), *state["messages"]])
+    return str(reply.content)

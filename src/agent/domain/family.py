@@ -21,9 +21,10 @@ from ..db import (
     FamilyReadingPolicy,
     FamilyReadingPolicyRepository,
     FamilyRepository,
+    Gender,
 )
 from .context import current, require_member_id
-from .util import merge_unique, remove_all
+from .util import merge_unique, parse_iso_date, remove_all
 
 
 @tool
@@ -39,12 +40,15 @@ def create_family(family_name: str | None = None, default_language: str = "en") 
 def add_family_member(
     role: str,
     display_name: str | None = None,
+    gender: Gender | None = None,
+    birth_date: str | None = None,
     is_primary_user: bool = False,
     language_preference: str | None = None,
 ) -> str:
     """Add a parent or caregiver to the current family.
 
-    `role` describes the relationship (e.g. "mother", "father", "caregiver"). This records only
+    `role` describes the relationship (e.g. "mother", "father", "caregiver"). `birth_date` is an
+    ISO date ('YYYY-MM-DD'); the member's age is derived from it at read time. This records only
     identity; conversation-extracted background goes to update_member_profile.
     """
     ctx = current()
@@ -53,11 +57,45 @@ def add_family_member(
         family_id=ctx.family_id,
         role=role,
         display_name=display_name,
+        gender=gender,
+        birth_date=parse_iso_date(birth_date),
         is_primary_user=is_primary_user,
         language_preference=language_preference,
     )
     FamilyMemberRepository(session=ctx.session).add(member)
     return f"Added family member {display_name or role} ({member.id})."
+
+
+@tool
+def update_member_basic_info(
+    display_name: str | None = None,
+    gender: Gender | None = None,
+    birth_date: str | None = None,
+    role: str | None = None,
+    language_preference: str | None = None,
+) -> str:
+    """Update the requesting member's identity fields (name, gender, birth date, role, language).
+
+    Acts on the turn's requester (the parent/caregiver who is asking). `birth_date` is an ISO
+    date ('YYYY-MM-DD'); age is derived from it at read time. Only provided fields change.
+    Conversation-extracted background (occupation, style, concerns) goes to update_member_profile.
+    """
+    ctx = current()
+    repo = FamilyMemberRepository(session=ctx.session)
+    member = repo.get_one_or_none(id=require_member_id())
+    if member is None:
+        raise RuntimeError("Requesting member not found in the database.")
+    for field, value in (
+        ("display_name", display_name),
+        ("gender", gender),
+        ("birth_date", parse_iso_date(birth_date)),
+        ("role", role),
+        ("language_preference", language_preference),
+    ):
+        if value is not None:
+            setattr(member, field, value)
+    repo.update(member)
+    return f"Updated basic info for member {member.id}."
 
 
 @tool

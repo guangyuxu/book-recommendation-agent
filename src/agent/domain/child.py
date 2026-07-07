@@ -16,16 +16,18 @@ from ..db import (
     ChildProfileRepository,
     ChildReadingProfile,
     ChildReadingProfileRepository,
+    Gender,
 )
 from .context import current, require_child_id
+from .util import parse_iso_date
 
 
 @tool
 def create_child(
     display_name: str,
     aliases: list[str] | None = None,
-    birth_year: int | None = None,
-    age: int | None = None,
+    gender: Gender | None = None,
+    birth_date: str | None = None,
     grade: str | None = None,
     school_system: str | None = None,
     country_or_curriculum: str | None = None,
@@ -35,8 +37,9 @@ def create_child(
 ) -> str:
     """Create a child in the current family and make them this turn's target child.
 
-    Also seeds an empty reading profile for the child so later reading-profile updates apply
-    cleanly. Use when the conversation introduces a child not already on file.
+    `birth_date` is an ISO date ('YYYY-MM-DD'); the child's age is derived from it at read
+    time, never stored. Also seeds an empty reading profile so later reading-profile updates
+    apply cleanly. Use when the conversation introduces a child not already on file.
     """
     ctx = current()
     child = ChildProfile(
@@ -44,8 +47,8 @@ def create_child(
         family_id=ctx.family_id,
         display_name=display_name,
         aliases=aliases or [],
-        birth_year=birth_year,
-        age=age,
+        gender=gender,
+        birth_date=parse_iso_date(birth_date),
         grade=grade,
         school_system=school_system,
         country_or_curriculum=country_or_curriculum,
@@ -73,20 +76,23 @@ def _target_child(ctx) -> ChildProfile:
 def update_child_basic_info(
     display_name: str | None = None,
     aliases: list[str] | None = None,
-    birth_year: int | None = None,
-    age: int | None = None,
+    gender: Gender | None = None,
+    birth_date: str | None = None,
     grade: str | None = None,
     primary_language: str | None = None,
     reading_language: str | None = None,
 ) -> str:
-    """Update the target child's basic identity fields. Only provided fields change."""
+    """Update the target child's basic identity fields. Only provided fields change.
+
+    `birth_date` is an ISO date ('YYYY-MM-DD'); age is derived from it at read time.
+    """
     ctx = current()
     child = _target_child(ctx)
     for field, value in (
         ("display_name", display_name),
         ("aliases", aliases),
-        ("birth_year", birth_year),
-        ("age", age),
+        ("gender", gender),
+        ("birth_date", parse_iso_date(birth_date)),
         ("grade", grade),
         ("primary_language", primary_language),
         ("reading_language", reading_language),

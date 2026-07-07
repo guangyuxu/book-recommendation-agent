@@ -7,12 +7,13 @@ FamilyMemberProfile holds the agent's conversation-extracted background (with pr
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -24,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base, JSONType, TextArray
-from ._columns import _created_at, _updated_at, _uuid_pk
+from ._columns import Gender, _created_at, _gender, _updated_at, _uuid_pk
 
 if TYPE_CHECKING:
     from .child import ChildProfile
@@ -69,6 +70,8 @@ class FamilyMember(Base):
         ForeignKey("family.id"), nullable=False
     )
     display_name: Mapped[str | None] = mapped_column(Text)
+    gender: Mapped[Gender | None] = _gender()
+    birth_date: Mapped[date | None] = mapped_column(Date)  # age is derived in load_context
     role: Mapped[str] = mapped_column(Text, nullable=False)
     is_primary_user: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")

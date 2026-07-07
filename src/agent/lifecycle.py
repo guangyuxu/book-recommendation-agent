@@ -7,6 +7,7 @@ policies, and pins the target child when known (explicit child_id, or the only c
 """
 
 import logging
+from datetime import date
 from uuid import UUID
 
 from langgraph.runtime import get_runtime
@@ -34,6 +35,14 @@ class FamilyNotFoundError(ValueError):
 
 def _never_retry(exc: Exception) -> bool:
     return False
+
+
+def _age(dob: date | None) -> int | None:
+    """Whole years from a date of birth to today, or None if unknown."""
+    if dob is None:
+        return None
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 
 # Missing/unknown context is a deterministic input error; retrying only spams the stack
@@ -68,6 +77,8 @@ def load_context(state: FlowState):
         for m in FamilyMemberRepository(session=s).list_by_family(fid):
             md = m.to_dict()
             md["profile"] = m.profile.to_dict() if m.profile else {}
+            md["age"] = _age(m.birth_date)  # derived, not stored
+            md["birth_date"] = m.birth_date.isoformat() if m.birth_date else None
             members.append(md)
         children: dict[str, dict] = {}
         for c in ChildProfileRepository(session=s).list_by_family(fid):
@@ -75,6 +86,8 @@ def load_context(state: FlowState):
             prof["reading_profile"] = (
                 c.reading_profile.to_dict() if c.reading_profile else {}
             )
+            prof["age"] = _age(c.birth_date)  # derived, not stored
+            prof["birth_date"] = c.birth_date.isoformat() if c.birth_date else None
             children[str(c.id)] = prof
         policies = [
             p.to_dict() for p in FamilyReadingPolicyRepository(session=s).list_active(fid)

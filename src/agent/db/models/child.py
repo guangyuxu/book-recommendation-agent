@@ -8,12 +8,13 @@ provenance -- the pattern the member domain mirrors.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -26,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base, TextArray
-from ._columns import _created_at, _updated_at, _uuid_pk
+from ._columns import Gender, _created_at, _gender, _updated_at, _uuid_pk
 
 if TYPE_CHECKING:
     from .family import Family
@@ -44,8 +45,8 @@ class ChildProfile(Base):
     )
     display_name: Mapped[str | None] = mapped_column(Text)
     aliases: Mapped[list[str]] = mapped_column(TextArray, server_default=text("'{}'"))
-    birth_year: Mapped[int | None] = mapped_column(Integer)
-    age: Mapped[int | None] = mapped_column(Integer)
+    gender: Mapped[Gender | None] = _gender()
+    birth_date: Mapped[date | None] = mapped_column(Date)  # age is derived in load_context
     grade: Mapped[str | None] = mapped_column(Text)
     school_system: Mapped[str | None] = mapped_column(Text)
     country_or_curriculum: Mapped[str | None] = mapped_column(Text)

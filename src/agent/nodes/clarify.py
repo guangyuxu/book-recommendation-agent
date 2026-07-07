@@ -11,9 +11,10 @@ from typing import cast
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from ..capabilities import required_inputs
+from ..capabilities import REGISTRY, required_inputs
 from ..llm import model
 from ..schemas import ClarificationDecision
+from .plan import ambient_satisfied
 
 _structured = model.with_structured_output(ClarificationDecision)
 
@@ -41,7 +42,17 @@ def clarify(state: dict) -> dict:
             )
         )
 
-    needs = sorted({inp for s in steps for inp in required_inputs(s["capability"])})
+    # Only genuinely-unmet required inputs: drop those an in-plan step produces (a dependency
+    # will supply them) and those already satisfiable from state (ambient).
+    produced = {r for s in steps for r in REGISTRY[s["capability"]].produces}
+    needs = sorted(
+        {
+            inp
+            for s in steps
+            for inp in required_inputs(s["capability"])
+            if inp not in produced and not ambient_satisfied(inp, state)
+        }
+    )
     has_child = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))
 
     system = SystemMessage(

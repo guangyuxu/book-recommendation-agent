@@ -46,9 +46,8 @@ def _as_uuid(value: str | UUID | None) -> UUID | None:
 
 @tool
 def create_recommendation_session(
-    primary_intent: str,
     user_message: str,
-    secondary_intent: str | None = None,
+    intents: list[str] | None = None,
     understanding: dict | None = None,
     plan: dict | None = None,
     capability_result: dict | None = None,
@@ -63,8 +62,7 @@ def create_recommendation_session(
         family_id=ctx.family_id,
         requester_member_id=_as_uuid(requester_member_id),
         target_child_id=require_child_id(),
-        primary_intent=primary_intent,
-        secondary_intent=secondary_intent,
+        intents=intents or [],
         user_message=user_message,
         understanding=understanding or {},
         plan=plan or {},

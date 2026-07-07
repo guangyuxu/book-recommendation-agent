@@ -25,8 +25,12 @@ def execute(state: dict) -> dict:
                 continue
             cap = REGISTRY.get(step["capability"])
             if cap is not None:
-                # Expose results so far so a dependent capability can read them.
-                view = {**state, "capability_results": {**(state.get("capability_results") or {}), **results}}
+                # Expose results so far (plus this step's deps) so the capability can read them.
+                view = {
+                    **state,
+                    "capability_results": {**(state.get("capability_results") or {}), **results},
+                    "_current_step": step,
+                }
                 results[cap.name] = cap.run(view)
             done.add(step["capability"])
             steps.remove(step)

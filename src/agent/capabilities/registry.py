@@ -35,14 +35,14 @@ REGISTRY: dict[str, Capability] = {
         recommend.run,
         required_inputs=("target_child",),
         optional_inputs=("reading_profile", "policies"),
-        produces=("booklist",),
+        produces=("books",),
     ),
     "evaluate": Capability(
         "evaluate",
         Intent.BOOK_EVALUATION,
         "Assess whether one named book suits the child.",
         evaluate.run,
-        required_inputs=("target_child", "book_title"),
+        required_inputs=("target_child", "books"),
         produces=("evaluation",),
     ),
     "compare": Capability(
@@ -50,7 +50,7 @@ REGISTRY: dict[str, Capability] = {
         Intent.BOOK_COMPARISON,
         "Compare two or more named books for the child.",
         compare.run,
-        required_inputs=("book_titles",),
+        required_inputs=("books",),
         optional_inputs=("target_child",),
         produces=("comparison",),
     ),
@@ -59,7 +59,7 @@ REGISTRY: dict[str, Capability] = {
         Intent.READING_DISCUSSION,
         "Generate post-reading discussion questions.",
         discussion.run,
-        required_inputs=("target_child", "book_title"),
+        required_inputs=("target_child", "books"),
         produces=("questions",),
     ),
     "path": Capability(
@@ -68,6 +68,7 @@ REGISTRY: dict[str, Capability] = {
         "Plan a staged reading path for the child.",
         path.run,
         required_inputs=("target_child", "reading_profile"),
+        optional_inputs=("books",),
         produces=("reading_path",),
     ),
     "content": Capability(
@@ -75,10 +76,22 @@ REGISTRY: dict[str, Capability] = {
         Intent.CONTENT_CREATION,
         "Draft requested content (article, copy, social post).",
         content.run,
-        optional_inputs=("target_child",),
+        optional_inputs=("target_child", "books"),
         produces=("draft",),
     ),
 }
+
+# Resources that come from context/state (load_context + understand), not from a capability's
+# output. The planner treats these as preconditions checked against state, not as edges. All
+# other resource names in `produces` are derived (they create producer -> consumer edges).
+#   target_child      -- resolved via understand/load_context (state["target_child_id"])
+#   reading_profile   -- the child's stored profile (state["children"][id]["reading_profile"])
+#   policies          -- family reading policies (state["policies"])
+#   books             -- books the user named this turn (understanding.mentioned_books);
+#                        ALSO derivable from recommend.produces, so it is dual-source.
+AMBIENT: frozenset[str] = frozenset(
+    {"target_child", "reading_profile", "policies", "books"}
+)
 
 # Intents that map to no capability: their work is pure profile/memory persistence.
 _NO_CAPABILITY = {

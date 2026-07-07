@@ -17,6 +17,7 @@ from .models import (
     FamilyMember,
     FamilyMemberProfile,
     FamilyReadingPolicy,
+    Gender,
     ReadingHistory,
     RecommendationFeedback,
     RecommendationItem,
@@ -45,6 +46,8 @@ __all__ = [
     "init_db",
     "JSONType",
     "TextArray",
+    # shared value types
+    "Gender",
     # models
     "Family",
     "FamilyMember",

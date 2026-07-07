@@ -23,6 +23,7 @@ Tables already exist in the DB; create_all is only a local/dev fallback (see bas
 
 from __future__ import annotations
 
+from ._columns import Gender
 from .book import BookCache
 from .child import ChildProfile, ChildReadingProfile
 from .family import Family, FamilyMember, FamilyMemberProfile, FamilyReadingPolicy
@@ -34,6 +35,8 @@ from .recommendation import (
 )
 
 __all__ = [
+    # shared value types
+    "Gender",
     # family
     "Family",
     "FamilyMember",

@@ -10,9 +10,31 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import DateTime, Uuid, func, text
+from sqlalchemy import DateTime, Enum, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
+
+
+class Gender(StrEnum):
+    """Allowed gender values (nullable in the DB). StrEnum so the value ('Male'/'Female')
+    is what serializes into state/prompts and stores in the column, not the member name."""
+
+    MALE = "Male"
+    FEMALE = "Female"
+
+
+def _gender() -> Mapped[Gender | None]:
+    """Nullable gender column, stored as a VARCHAR + CHECK (native_enum=False) so it works on
+    both Postgres and the sqlite test DB. values_callable persists the value, not the name."""
+    return mapped_column(
+        Enum(
+            Gender,
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum: [m.value for m in enum],
+        )
+    )
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
