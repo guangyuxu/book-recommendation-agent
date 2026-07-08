@@ -39,8 +39,19 @@ def test_new_child_is_not_pinned() -> None:
     assert resolve_child({"status": "new"}, CHILDREN, "a") == (None, True, False)
 
 
-def test_ambiguous_asks_and_drops_pin() -> None:
-    assert resolve_child({"status": "ambiguous"}, CHILDREN, "a") == (None, False, True)
+def test_ambiguous_falls_back_to_pin() -> None:
+    # A bare child reference resolves to the active child rather than interrupting.
+    assert resolve_child({"status": "ambiguous"}, CHILDREN, "a") == ("a", False, False)
+
+
+def test_ambiguous_asks_when_nothing_pinned() -> None:
+    # No pin to fall back to -> we must ask which child.
+    assert resolve_child({"status": "ambiguous"}, CHILDREN, None) == (None, False, True)
+
+
+def test_ambiguous_asks_when_pin_not_on_roster() -> None:
+    # A stale/invalid pin can't disambiguate -> ask.
+    assert resolve_child({"status": "ambiguous"}, CHILDREN, "zzz") == (None, False, True)
 
 
 def test_none_reference_keeps_pin() -> None:

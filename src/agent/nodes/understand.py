@@ -26,10 +26,12 @@ def resolve_child(
 
     Returns (target_child_id, is_new, ambiguous). Priority: an explicit message reference wins
     over the preset (the pin may be stale) -- so "for Ben" switches away from a UI-selected A.
-    Only when the message singles out no child do we fall back to the preset (the active child).
+    A bare reference that names no one falls back to the preset (the active child) rather than
+    interrupting: the pinned/selected child disambiguates it.
       - matched(valid roster id) -> that child (may differ from preset == a switch)
       - new                       -> is_new (a non-roster child; don't force the preset)
-      - ambiguous                 -> ask (don't assume the preset)
+      - ambiguous, preset pinned  -> the preset (the active child resolves the reference)
+      - ambiguous, nothing pinned -> ask (no child to fall back to)
       - none / hallucinated id     -> fall back to preset
     """
     status = ref.get("status")
@@ -39,6 +41,10 @@ def resolve_child(
     if status == "new":
         return None, True, False
     if status == "ambiguous":
+        # The message points at a child but not which one. If a child is already active,
+        # attribute it there; only ask when there is no pin to fall back to.
+        if preset in children:
+            return preset, False, False
         return None, False, True
     return preset, False, False
 
