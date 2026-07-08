@@ -7,18 +7,24 @@ from datetime import date
 
 
 def parse_iso_date(value: str | None) -> date | None:
-    """Parse an ISO 'YYYY-MM-DD' birth date from a tool arg, or None if not given.
+    """Parse a birth date from a tool arg, or None if not given.
 
-    Tool models pass dates as strings; the birth_date columns are DATE. Raise a clear
-    error on a malformed value so the failure isn't a cryptic driver-level one later.
+    Tolerant of partial dates: 'YYYY', 'YYYY-MM', and 'YYYY-MM-DD' are all accepted, with a
+    missing month/day defaulting to 01 (a parent may only know the birth year). Tool models
+    pass dates as strings; the birth_date columns are DATE. Raise a clear error on a malformed
+    value so the failure isn't a cryptic driver-level one later.
     """
     if value is None:
         return None
+    parts = str(value).strip().split("-")
     try:
-        return date.fromisoformat(value)
-    except ValueError as exc:
+        year = int(parts[0])
+        month = int(parts[1]) if len(parts) > 1 and parts[1] else 1
+        day = int(parts[2]) if len(parts) > 2 and parts[2] else 1
+        return date(year, month, day)
+    except (ValueError, IndexError) as exc:
         raise ValueError(
-            f"birth_date must be an ISO date like '2015-04-23', got {value!r}."
+            f"birth_date must be a year or ISO date like '2015' or '2015-04-23', got {value!r}."
         ) from exc
 
 

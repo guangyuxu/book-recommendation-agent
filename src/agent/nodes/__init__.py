@@ -1,6 +1,14 @@
-"""Pipeline nodes: understand -> plan -> clarify -> execute -> memory -> profile_update -> respond."""
+"""Pipeline nodes: understand -> plan -> clarify -> execute -> memory
+-> prepare_confirmation -> [request_confirmation -> apply_confirmation] -> profile_update -> respond.
+"""
 
 from .clarify import clarify, route_after_clarify
+from .confirm import (
+    apply_confirmation,
+    prepare_confirmation,
+    request_confirmation,
+    route_after_prepare,
+)
 from .execute import execute
 from .memory import memory
 from .plan import plan
@@ -15,6 +23,10 @@ __all__ = [
     "route_after_clarify",
     "execute",
     "memory",
+    "prepare_confirmation",
+    "route_after_prepare",
+    "request_confirmation",
+    "apply_confirmation",
     "profile_update",
     "respond",
 ]

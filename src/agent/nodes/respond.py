@@ -55,6 +55,33 @@ def _render_outputs(results: dict) -> str:
     return "\n\n".join(parts)
 
 
+def _switch_note(state: dict) -> str:
+    """A hint telling the reply to acknowledge a focus switch to another child (point 2)."""
+    switch = state.get("child_switch") or {}
+    to_name = switch.get("to_name")
+    if not to_name:
+        return ""
+    return (
+        f"\n\nThe conversation focus just switched to {to_name}. Briefly and naturally "
+        "acknowledge at the start of your reply whom you are now talking about."
+    )
+
+
+def _confirmation_note(state: dict) -> str:
+    """A hint to acknowledge the outcome of a confirmation gate (point 1/3)."""
+    status = (state.get("confirmation") or {}).get("status")
+    if status == "applied":
+        return (
+            "\n\nThe parent just confirmed a profile change; briefly acknowledge that it is saved."
+        )
+    if status == "rejected":
+        return (
+            "\n\nThe parent declined the proposed profile change; briefly acknowledge you will "
+            "not save it."
+        )
+    return ""
+
+
 def _compose(state: dict, rendered: str) -> str:
     system = SystemMessage(
         content=(
@@ -63,6 +90,8 @@ def _compose(state: dict, rendered: str) -> str:
             "facts beyond the material; if there is no material, respond helpfully to the "
             "message itself.\n\n"
             f"Prepared material:\n{rendered or '(none)'}"
+            f"{_switch_note(state)}"
+            f"{_confirmation_note(state)}"
         )
     )
     reply = model.invoke([system, *state["messages"]])

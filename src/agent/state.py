@@ -47,10 +47,26 @@ class FlowState(TypedDict, total=False):
     # resolved by the understand node.
     target_child_id: str | None
 
+    # A focus switch detected this turn (point 2): the message clearly pointed at a different
+    # child than the pinned one, so target_child_id moved. {from, to, from_name, to_name} for
+    # the frontend to swap the avatar (and offer an undo); {} when no switch happened this turn.
+    # Always rewritten by understand so a stale switch never lingers across turns.
+    child_switch: dict
+
     # Per-stage products. Dicts are model_dump()s of the pydantic schemas in agent.schemas.
     understanding: dict
     plan: dict
     clarification: dict
+    # HITL confirmation gate (point 1/3), split across three nodes:
+    #   confirmation_request  -- popup payload built by prepare_confirmation ({} => skip the gate)
+    #   confirmation_decision -- the Accept/Reject resume value captured by request_confirmation
+    #   confirmation          -- outcome written by apply_confirmation: {kind, status:
+    #                            applied|rejected, operations}
+    # All three are rewritten every turn by prepare_confirmation (to {}) so nothing goes stale.
+    # While the gate is open the graph is paused on the interrupt() in request_confirmation.
+    confirmation_request: dict
+    confirmation_decision: dict
+    confirmation: dict
     capability_results: Annotated[
         dict[str, dict], merge_dict
     ]  # capability name -> result

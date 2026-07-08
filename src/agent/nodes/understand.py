@@ -43,6 +43,28 @@ def resolve_child(
     return preset, False, False
 
 
+def switch_signal(
+    status: str | None,
+    target_id: str | None,
+    preset: str | None,
+    children: dict[str, dict],
+) -> dict:
+    """Describe a focus switch for the frontend, or {} if none happened this turn.
+
+    Fires only on a confident, matched move to a *different* child than the pinned one (from
+    is None when nothing was pinned yet -- a first-time selection the frontend still needs).
+    Returns {} when the reference is unchanged, ambiguous, new, or absent.
+    """
+    if status != "matched" or not target_id or target_id == preset:
+        return {}
+    return {
+        "from": preset,
+        "to": target_id,
+        "from_name": (children.get(preset) or {}).get("display_name") if preset else None,
+        "to_name": (children.get(target_id) or {}).get("display_name"),
+    }
+
+
 def _roster(children: dict[str, dict]) -> str:
     lines = []
     for cid, prof in children.items():
@@ -91,4 +113,11 @@ def understand(state: dict) -> dict:
     u["child_is_new"] = is_new  # resolved outputs downstream (memory/profile_update/clarify) read
     u["child_ambiguous"] = ambiguous
 
-    return {"understanding": u, "target_child_id": target_id}
+    return {
+        "understanding": u,
+        "target_child_id": target_id,
+        # Always written (even when {}) so a switch from an earlier turn never lingers.
+        "child_switch": switch_signal(
+            understanding.child_ref.status, target_id, state.get("target_child_id"), children
+        ),
+    }

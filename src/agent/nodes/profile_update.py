@@ -9,10 +9,12 @@ to the conversation.
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from langchain.messages import HumanMessage, SystemMessage, ToolMessage
 
 from ..domain import MEMORY_TOOLS, MEMORY_TOOLS_BY_NAME, domain_session
+from ..lifecycle import load_family_entities
 from ..llm import model
 
 logger = logging.getLogger(__name__)
@@ -25,8 +27,7 @@ def profile_update(state: dict) -> dict:
     """Apply the turn's memory operations by calling domain tools inside one transaction."""
     u = state.get("understanding") or {}
     operations = state.get("memory_operations") or []
-    child_is_new = bool(u.get("child_is_new"))
-    if not operations and not child_is_new:
+    if not operations:
         return {}
 
     family = state.get("family") or {}
@@ -47,16 +48,16 @@ def profile_update(state: dict) -> dict:
         system = SystemMessage(
             content=(
                 "You persist what was decided this turn by calling the available domain tools. "
-                "The family and target child are already set for you -- never pass ids. If the "
-                "child is new, call create_child first; subsequent tools then target that child. "
-                "Apply each operation below using the matching tool, then stop."
+                "The family and target child are already set for you -- never pass ids. Apply "
+                "each operation below using the matching tool; when an operation creates a child, "
+                "call create_child first so the later operations target the new child. Then stop. "
+                "Do NOT call any tool that is not one of the operations listed."
             )
         )
         messages = [
             system,
             HumanMessage(
                 content=(
-                    f"child_is_new={child_is_new}\n"
                     f"user_signals={u.get('user_signals')}\n\n"
                     f"Operations to apply:\n{ops_text}"
                 )
@@ -80,7 +81,11 @@ def profile_update(state: dict) -> dict:
                         content = f"Error: {exc}"
                 messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
         new_target = str(ctx.target_child_id) if ctx.target_child_id else None
+        # Re-read inside the still-open session so the frontend syncs same-turn: the writes are
+        # flushed (visible to this transaction) even though the commit happens on block exit.
+        members, children = load_family_entities(ctx.session, UUID(str(family_id)))
 
+    out: dict = {"members": members, "children": children}
     if new_target and new_target != target:
-        return {"target_child_id": new_target}
-    return {}
+        out["target_child_id"] = new_target
+    return out

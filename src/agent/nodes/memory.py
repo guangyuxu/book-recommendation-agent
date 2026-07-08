@@ -31,9 +31,18 @@ def memory(state: dict) -> dict:
     system = SystemMessage(
         content=(
             "You are a memory policy. Decide what from this turn is worth storing long-term "
-            "about the child or family, and express each as a domain operation with plain "
-            "domain arguments (never database ids). Skip transient or already-known facts. If "
-            "the child is new, include CreateChild first.\n\n"
+            "about the child or family, and express each as a domain operation. Use the EXACT "
+            "operation name from the available list, with plain domain arguments (never database "
+            "ids). Skip transient or already-known facts.\n\n"
+            "Argument names MUST match the tool's real parameters. In particular use "
+            "`birth_date` (an ISO date; a bare year like '2023' is fine if only the year is "
+            "known) -- never `age`, and never invent parameters. `gender` must be exactly "
+            "'Male' or 'Female'.\n\n"
+            "If the child being discussed is new (child_is_new=true) and worth remembering, emit "
+            "create_child first (with whatever identity was given), then their facts. Creating a "
+            "child and changing identity fields (gender, birth_date, name) are confirmed with the "
+            "parent before they take effect -- still emit them normally; a later step handles the "
+            "confirmation. Ordinary reading-profile facts are saved directly.\n\n"
             f"Available operations: {_AVAILABLE_OPERATIONS}"
         )
     )
