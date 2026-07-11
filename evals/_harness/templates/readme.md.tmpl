@@ -1,0 +1,25 @@
+# {{NODE_DOTTED}} — {{STRATEGY}}
+
+**Node under test:** `src/{{NODE_PATH}}.py`
+**Strategy:** {{STRATEGY}}
+
+## What it measures
+TODO(author): one paragraph — which output of this node, and what "good" means.
+
+## Files
+- `{{STRATEGY}}_datasets.jsonl` — self-contained cases (English; gold is spec-derived, never taken
+  verbatim from raw user input).
+- `{{STRATEGY}}_run.py` — pure logic; `load_cases()` + `run_all()` (the discovery interface).
+- `{{STRATEGY}}_thresholds.json` — co-located pass/fail floors (`"<metric>_min"`).
+
+## Run
+```bash
+python -m evals.{{NODE_DOTTED}}.{{STRATEGY}}_run          # ad-hoc, prints summary
+python -m evals.{{NODE_DOTTED}}.{{STRATEGY}}_run --gate   # assert thresholds, non-zero on fail
+RUN_EVAL=1 pytest eval_regression -k {{NODE_NAME}}        # via the gate
+```
+Needs `ANTHROPIC_API_KEY`.
+
+## Adding cases
+Append lines. Cover happy path, edges, negatives, and known confusions. Keep the dataset balanced
+and de-duplicated. Follow the `.claude` evals skill's dataset-generation workflow.

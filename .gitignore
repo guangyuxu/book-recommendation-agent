@@ -145,6 +145,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# ruff
+.ruff_cache/
+
 # Pyre type checker
 .pyre/
 
@@ -162,3 +165,14 @@ cython_debug/
 .idea/
 .langgraph_api/
 agent.egg-info/
+
+# Eval run reports (timestamped, per-run). Keep the dir via .gitkeep.
+evals/results/*
+!evals/results/.gitkeep
+
+# Claude Code local state (per-machine, not shared) -- except shared skills, which we commit.
+# Ignore the dir's contents (not the dir itself) so the skills subdir can be re-included.
+.claude/settings.local.json
+
+# macOS
+.DS_Store

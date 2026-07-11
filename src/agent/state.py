@@ -11,15 +11,7 @@ from uuid import UUID
 
 from langchain.messages import AnyMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, field_validator, Field
-
-
-def merge_dict(left: dict | None, right: dict | None) -> dict:
-    """Merge two dicts idempotently; right wins per key.
-
-    Used for capability_results, where each capability writes its own key (at most two per turn).
-    """
-    return {**(left or {}), **(right or {})}
+from pydantic import BaseModel, Field, field_validator
 
 
 class FlowState(TypedDict, total=False):
@@ -53,7 +45,8 @@ class FlowState(TypedDict, total=False):
     # Always rewritten by understand so a stale switch never lingers across turns.
     child_switch: dict
 
-    # Per-stage products. Dicts are model_dump()s of the pydantic schemas in agent.schemas.
+    # Per-stage products. Dicts are model_dump()s of the pydantic schemas in agent.pipeline.schemas
+    # (understanding/plan/clarification) and agent.memory.schemas (memory/confirmation).
     understanding: dict
     plan: dict
     clarification: dict
@@ -61,15 +54,17 @@ class FlowState(TypedDict, total=False):
     #   confirmation_request  -- popup payload built by prepare_confirmation ({} => skip the gate)
     #   confirmation_decision -- the Accept/Reject resume value captured by request_confirmation
     #   confirmation          -- outcome written by apply_confirmation: {kind, status:
-    #                            applied|rejected, operations}
+    #                            applied|rejected, operations}; profile_update downgrades an
+    #                            applied status to "error" if the confirmed writes fail to persist.
     # All three are rewritten every turn by prepare_confirmation (to {}) so nothing goes stale.
     # While the gate is open the graph is paused on the interrupt() in request_confirmation.
     confirmation_request: dict
     confirmation_decision: dict
     confirmation: dict
-    capability_results: Annotated[
-        dict[str, dict], merge_dict
-    ]  # capability name -> result
+    # Capability name -> result. Last-write-wins and rewritten in full every turn by `execute`
+    # (even to {} when the turn runs no capabilities), so a prior turn's results never linger
+    # into this turn's render/persist. `execute` is the sole writer.
+    capability_results: dict[str, dict]
     memory_operations: list[dict]
 
 

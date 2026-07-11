@@ -17,6 +17,7 @@ from .family import (
     add_family_member,
     create_family,
     update_family_reading_policy,
+    update_member_basic_info,
     update_member_profile,
 )
 from .reading_history import (
@@ -51,6 +52,7 @@ __all__ = [
     # family
     "create_family",
     "add_family_member",
+    "update_member_basic_info",
     "update_member_profile",
     "update_family_reading_policy",
     # child

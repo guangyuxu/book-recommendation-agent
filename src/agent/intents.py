@@ -43,7 +43,9 @@ class Intent(Enum):
         "Child profile update flow",
         "User states or updates something about the child: a trait, preference, "
         "age, reading level, or behavior, whether a stable fact or a recent "
-        "change, without asking for a separate task.",
+        "change. Use ONLY when this is the whole point of the message; if the "
+        "message also asks for a task (e.g. a recommendation), do NOT add this "
+        "intent -- the fact is captured in user_signals instead.",
     )
     READING_PATH_PLANNING = (
         "reading_path_planning",
@@ -55,13 +57,17 @@ class Intent(Enum):
         "parent_goal_update",
         "Parent goal update flow",
         "Parent states an educational goal or expectation for what they want "
-        "the child to gain.",
+        "the child to gain. Use ONLY when this is the whole point of the "
+        "message; if it also asks for a task, do NOT add this intent -- the "
+        "goal is captured in user_signals instead.",
     )
     PARENT_PROFILE_UPDATE = (
         "parent_profile_update",
         "Parent profile update flow",
         "Parent describes their own situation, parenting style, available time, "
-        "or personal taste: about the parent themselves, not a goal for the child.",
+        "or personal taste: about the parent themselves, not a goal for the child. "
+        "Use ONLY when this is the whole point of the message; if it also asks for "
+        "a task, do NOT add this intent -- the fact is captured in user_signals instead.",
     )
     READING_DISCUSSION = (
         "reading_discussion",

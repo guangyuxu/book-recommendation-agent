@@ -12,6 +12,7 @@ class BookCacheRepository(SQLAlchemySyncRepository[BookCache]):
 
     def get_by_title_author(self, title: str, author: str | None) -> BookCache | None:
         """Look up a cached book by its unique (title, author) key."""
+        # noinspection PyUnresolvedReferences
         author_filter = (
             BookCache.author == author
             if author is not None

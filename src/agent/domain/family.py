@@ -23,8 +23,8 @@ from ..db import (
     FamilyRepository,
     Gender,
 )
+from ._util import merge_unique, parse_iso_date, remove_all
 from .context import current, require_member_id
-from .util import merge_unique, parse_iso_date, remove_all
 
 
 @tool

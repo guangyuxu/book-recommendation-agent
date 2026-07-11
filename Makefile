@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests \
+.PHONY: all format lint test tests test_watch coverage help extended_tests \
 	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
 	k8s-status k8s-logs k8s-pf k8s-down
 
@@ -11,8 +11,10 @@ TEST_FILE ?= tests/unit_tests/
 test:
 	python -m pytest $(TEST_FILE)
 
-integration_tests:
-	python -m pytest tests/integration_tests 
+tests: test   # alias so `make tests` works too
+
+# No integration_tests target: tests/integration_tests/ is an empty placeholder. When you add
+# end-to-end tests there, run them with `RUN_INTEGRATION=1 python -m pytest tests/integration_tests`.
 
 test_watch:
 	python -m ptw --snapshot-update --now . -- -vv tests/unit_tests
@@ -20,8 +22,33 @@ test_watch:
 test_profile:
 	python -m pytest -vv tests/unit_tests/ --profile-svg
 
+coverage:
+	python -m coverage run -m pytest tests/unit_tests/
+	python -m coverage report
+
 extended_tests:
 	python -m pytest --only-extended $(TEST_FILE)
+
+######################
+# EVALS (LLM output quality; opt-in, calls the Anthropic API)
+######################
+
+# Node evals live under evals/<tree>/<node>/ (mirroring src/agent); eval_regression/ is the gate.
+# All gated on RUN_EVAL=1 so a normal `make test` never spends API tokens. See evals/README.md.
+eval:                    ## Gate ALL node evals against their thresholds (CI entrypoint)
+	RUN_EVAL=1 python -m eval_regression.run
+
+eval_classify:           ## Gate only the classify-strategy nodes
+	RUN_EVAL=1 python -m eval_regression.run --strategy classify
+
+eval_judge:              ## Gate only the judge-strategy nodes
+	RUN_EVAL=1 python -m eval_regression.run --strategy judge
+
+eval_node:               ## Gate one node: make eval_node NODE=understand
+	RUN_EVAL=1 python -m eval_regression.run --node $(NODE)
+
+eval_produce:            ## Regenerate co-located thresholds (add ARGS='--dry-run' to preview)
+	python -m eval_regression.produce $(ARGS)
 
 
 ######################
@@ -121,6 +148,12 @@ help:
 	@echo 'tests                        - run unit tests'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
+	@echo 'coverage                     - run unit tests with a coverage report'
+	@echo 'eval                         - gate all node evals (RUN_EVAL=1, needs API key)'
+	@echo 'eval_classify                - gate only classify-strategy nodes'
+	@echo 'eval_judge                   - gate only judge-strategy nodes'
+	@echo 'eval_node NODE=understand    - gate one node by name'
+	@echo 'eval_produce ARGS=--dry-run  - (re)generate co-located thresholds'
 	@echo '--- deploy (minikube) ---'
 	@echo 'deploy                       - first-time deploy: secret + manifests + build/load + rollout'
 	@echo 'redeploy                     - redeploy after code changes: build/load + new tag + rollout (most common)'

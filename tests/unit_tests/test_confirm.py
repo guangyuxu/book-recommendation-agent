@@ -8,14 +8,16 @@ and how an approved record rebuilds clean operations (_child_op).
 
 from __future__ import annotations
 
-from agent.nodes.confirm import (
+from agent.memory.confirm import (
+    apply_confirmation,
+    prepare_confirmation,
+    route_after_prepare,
+)
+from agent.memory.confirm_policy import (
     _build_child,
     _child_op,
     _read_decision,
-    apply_confirmation,
     classify,
-    prepare_confirmation,
-    route_after_prepare,
 )
 
 SOFT = {"operation": "update_reading_interest", "arguments": {"add_interests": ["dragons"]}}
@@ -128,6 +130,24 @@ def test_child_op_builds_update_when_not_creating() -> None:
     ops = _child_op(record, creating=False)
     assert ops[0]["operation"] == "update_child_basic_info"
     assert ops[0]["arguments"] == {"birth_date": "2016-03-15"}
+
+
+def test_child_op_create_falls_back_to_alias_when_name_missing() -> None:
+    # create_child requires a display_name; a create confirmed without one must still persist,
+    # falling back to an alias so the child (and its bundled facts) are not silently dropped.
+    record = _build_child(
+        [{"operation": "create_child", "arguments": {"aliases": ["Bud"], "gender": "Male"}}]
+    )
+    ops = _child_op(record, creating=True)
+    assert ops[0]["operation"] == "create_child"
+    assert ops[0]["arguments"]["display_name"] == "Bud"
+
+
+def test_child_op_create_uses_placeholder_when_no_name_or_alias() -> None:
+    record = _build_child([{"operation": "create_child", "arguments": {"gender": "Female"}}])
+    ops = _child_op(record, creating=True)
+    assert ops[0]["operation"] == "create_child"
+    assert ops[0]["arguments"]["display_name"] == "New child"
 
 
 # --- nodes: prepare / route / apply (interrupt-free paths) ------------------------------

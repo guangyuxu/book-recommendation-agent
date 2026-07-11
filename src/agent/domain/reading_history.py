@@ -12,8 +12,8 @@ from uuid import uuid4
 from langchain_core.tools import tool
 
 from ..db import ReadingHistory, ReadingHistoryRepository
+from ._util import merge_unique
 from .context import current, require_child_id
-from .util import merge_unique
 
 
 def _parse_date(value: str | None) -> date | None:

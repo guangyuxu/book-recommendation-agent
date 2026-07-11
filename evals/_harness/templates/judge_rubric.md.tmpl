@@ -1,0 +1,31 @@
+# Rubric — {{NODE_NAME}} ({{STRATEGY}} quality)
+
+The judge scores one `{{NODE_NAME}}` output on the dimensions below, each **1-5**. Score every
+dimension independently; anchor to the 1/3/5 descriptions. Return one integer + a one-sentence
+justification per dimension.
+
+## fit
+How well the output matches the child's stated interests, reading stage, and the family's
+goals/constraints in the context.
+
+- **5** — Clearly targets the child's interests AND stage; grounded in the specific context.
+- **3** — Roughly on-theme but generic; partly ignores the stated interest or stage.
+- **1** — Off-topic, wrong stage, or ignores the context.
+
+## age_fit
+Whether content, themes, and difficulty suit the child's age.
+
+- **5** — Age-appropriate throughout; real risks flagged.
+- **3** — Mostly fine but 1-2 elements are a stretch.
+- **1** — Clearly age-inappropriate content or difficulty.
+
+## language
+Clarity, tone, and correctness of the parent-facing text.
+
+- **5** — Clear, warm, concrete, error-free; directly actionable.
+- **3** — Understandable but vague, repetitive, or slightly awkward.
+- **1** — Confusing, boilerplate, or contains errors.
+
+## Threshold mapping
+Aggregated as `mean_<dimension>` across the dataset plus a `pass_rate` (every dimension >= floor);
+gated by `judge_thresholds.json`.

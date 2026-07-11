@@ -54,6 +54,7 @@ class FamilyReadingPolicyRepository(SQLAlchemySyncRepository[FamilyReadingPolicy
             FamilyReadingPolicy.is_active.is_(True),
         ]
         if child_id is not None:
+            # noinspection PyUnresolvedReferences
             filters.append(
                 or_(
                     FamilyReadingPolicy.child_id == child_id,

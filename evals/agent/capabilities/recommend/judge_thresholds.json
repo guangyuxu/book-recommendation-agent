@@ -1,0 +1,6 @@
+{
+  "mean_fit_min": 3.0,
+  "mean_age_fit_min": 3.0,
+  "mean_language_min": 3.0,
+  "pass_rate_min": 0.5
+}

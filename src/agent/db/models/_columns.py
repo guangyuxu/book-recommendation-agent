@@ -18,7 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 class Gender(StrEnum):
     """Allowed gender values (nullable in the DB). StrEnum so the value ('Male'/'Female')
-    is what serializes into state/prompts and stores in the column, not the member name."""
+    is what serializes into state/prompts and stores in the column, not the member name.
+    """
 
     MALE = "Male"
     FEMALE = "Female"
@@ -26,7 +27,8 @@ class Gender(StrEnum):
 
 def _gender() -> Mapped[Gender | None]:
     """Nullable gender column, stored as a VARCHAR + CHECK (native_enum=False) so it works on
-    both Postgres and the sqlite test DB. values_callable persists the value, not the name."""
+    both Postgres and the sqlite test DB. values_callable persists the value, not the name.
+    """
     return mapped_column(
         Enum(
             Gender,

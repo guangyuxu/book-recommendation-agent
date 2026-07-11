@@ -1,0 +1,60 @@
+"""Classify eval for the `{{NODE_NAME}}` node: assert its structured output against gold labels.
+
+Pure logic, no pytest -- callable both from `eval_regression` and directly from the CLI
+(`python -m evals.{{NODE_DOTTED}}.classify_run`). Scores the node's REAL structured output against
+spec-derived gold labels in `classify_datasets.jsonl`.
+
+TODO(author): fill in `predict()` to call the node under test and return the field(s) you score,
+and `run_all()` to compute the summary metrics your `classify_thresholds.json` gates on. See
+evals/agent/pipeline/understand/classify_run.py for a complete worked example.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from evals._harness import metrics  # noqa: F401  (use set_exact_match / label_prf here)
+from evals._harness.cases import load_jsonl
+
+# --- interface (required by evals/_harness/discovery.py) --------------------------------
+STRATEGY = "classify"
+NODE = "{{NODE_DOTTED}}"
+THRESHOLDS = Path(__file__).with_name("classify_thresholds.json")
+
+_DATASET = Path(__file__).with_name("classify_datasets.jsonl")
+
+
+def load_cases() -> list[dict]:
+    """Load the labeled dataset (validate into a pydantic case model if you add one)."""
+    return load_jsonl(_DATASET)
+
+
+def predict(case: dict) -> dict[str, Any]:
+    """Run one case through the node and return the fields to score.
+
+    Wrap the node call in try/except and return an `error` marker instead of raising, so one bad
+    case is a miss rather than a batch-killer.
+    """
+    raise NotImplementedError("author predict(): call the {{NODE_NAME}} node on `case`")
+
+
+def run_all(cases: list[dict] | None = None) -> dict[str, Any]:
+    """Predict every case, score, and return {'summary': {...}, 'cases': [...]}."""
+    raise NotImplementedError("author run_all(): score predictions into a summary metrics dict")
+
+
+if __name__ == "__main__":
+    import sys
+
+    from evals._harness import thresholds as thresholds_mod
+
+    report = run_all()
+    print(report["summary"])  # noqa: T201
+    if "--gate" in sys.argv:
+        failures = thresholds_mod.assert_thresholds(
+            report["summary"], thresholds_mod.load(THRESHOLDS)
+        )
+        if failures:
+            print("THRESHOLDS NOT MET:\n" + "\n".join(failures))  # noqa: T201
+            sys.exit(1)

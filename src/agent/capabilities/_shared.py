@@ -101,13 +101,17 @@ def upstream_brief(state: dict) -> str:
     """
     deps = (state.get("_current_step") or {}).get("depends_on") or []
     results = state.get("capability_results") or {}
-    parts = [
-        rendered
-        for dep in deps
-        if isinstance(results.get(dep), dict)
-        and (rendered := _render_dep_result(dep, results[dep]))
-    ]
-    return "From earlier steps this turn:\n" + "\n\n".join(parts) if parts else ""
+    parts: list[str] = []
+    for dep in deps:
+        result = results.get(dep)
+        if not isinstance(result, dict):
+            continue
+        rendered = _render_dep_result(dep, result)
+        if rendered:
+            parts.append(rendered)
+    if not parts:
+        return ""
+    return "From earlier steps this turn:\n" + "\n\n".join(parts)
 
 
 def run_text(state: dict, instructions: str) -> str:

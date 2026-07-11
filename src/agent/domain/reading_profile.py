@@ -12,8 +12,8 @@ from uuid import uuid4
 from langchain_core.tools import tool
 
 from ..db import ChildReadingProfile, ChildReadingProfileRepository
+from ._util import merge_unique, remove_all
 from .context import current, require_child_id
-from .util import merge_unique, remove_all
 
 
 def _profile(ctx) -> tuple[ChildReadingProfile, ChildReadingProfileRepository, bool]:

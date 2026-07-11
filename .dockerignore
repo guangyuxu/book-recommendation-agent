@@ -10,12 +10,16 @@ vendor
 .env.*
 *.local
 
-# --- git / Docker itself ---
+# --- git / CI / Docker itself ---
 .git
 .gitignore
 .dockerignore
+.github
 docker-compose.yml
 Dockerfile
+
+# --- Local agent/editor state (never needed at runtime) ---
+.claude
 
 # --- Build artifacts / caches ---
 dist
@@ -36,9 +40,12 @@ __pycache__
 .idea
 .DS_Store
 
-# --- Tests ---
+# --- Tests / evals (dev-only; the runtime graph never imports these) ---
 tests
+evals
+eval_regression
 *.coverage
+.coverage
 coverage
 
 # --- Logs / temp files ---

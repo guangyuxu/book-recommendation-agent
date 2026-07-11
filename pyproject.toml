@@ -21,10 +21,12 @@ dependencies = [
 ]
 
 # Dev + test tooling (uv installs these by default). anyio + pytest are test-only;
-# langgraph-cli runs the local dev server / Studio; mypy + ruff are the linters.
+# coverage measures unit-test coverage; langgraph-cli runs the local dev server / Studio;
+# mypy + ruff are the linters.
 [dependency-groups]
 dev = [
     "anyio>=4.14.1",
+    "coverage[toml]>=7.15.0",
     "langgraph-cli[inmem]>=0.4.30",
     "mypy>=2.1.0",
     "pytest>=9.1.1",
@@ -44,6 +46,37 @@ packages = ["langgraph.templates.agent", "agent"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+
+[tool.mypy]
+# Single source of truth for type checking: the mypy CLI (`mypy`) and PyCharm's Mypy plugin
+# both read this section, so the IDE and the linter agree. PyCharm's *built-in* type inspection
+# does not understand langgraph's structural State protocols (TypedDictLikeV1/V2) and red-lines
+# valid `StateGraph(FlowState)` / `add_node(...)` calls; disable that inspection and rely on mypy.
+files = ["src/agent"]
+mypy_path = "src"
+python_version = "3.13"
+namespace_packages = true
+explicit_package_bases = true
+warn_redundant_casts = true
+warn_unused_ignores = true  # would have flagged the wrong `# type: ignore[arg-type]`
+
+[tool.pytest.ini_options]
+# Eval strategy markers -- one per strategy filename prefix under evals/<tree>/<node>/. The
+# regression gate (eval_regression/test_regression.py) tags each discovered node eval with its
+# strategy marker, so `pytest -m classify` / `-m judge` select a whole category.
+markers = [
+    "classify: node evals that assert structured output against gold labels",
+    "judge: node evals scored by an LLM judge against a rubric",
+    "regression: the aggregate threshold gate",
+]
+
+[tool.coverage.run]
+# `coverage run -m pytest` (see `make coverage`) auto-scopes to the package, so no --source flag
+# is needed. Only unit tests run under coverage; integration/eval are opt-in and hit the network.
+source = ["src/agent"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff]
 lint.select = [

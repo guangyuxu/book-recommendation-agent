@@ -6,7 +6,7 @@ resolve_child feeds from the LLM's message-evidence (child_ref).
 
 from __future__ import annotations
 
-from agent.nodes.understand import resolve_child, switch_signal
+from agent.pipeline.understand import resolve_child, switch_signal
 
 CHILDREN = {
     "a": {"display_name": "Son"},
