@@ -13,11 +13,11 @@ from typing import Any, cast
 from langchain.messages import SystemMessage
 
 from ..intents import intent_menu
-from ..llm import model
+from ..llm import STANDARD
 from ..state import FlowState
 from .schemas import Understanding
 
-_structured = model.with_structured_output(Understanding)
+_structured = STANDARD.structured(Understanding)
 
 
 def resolve_child(

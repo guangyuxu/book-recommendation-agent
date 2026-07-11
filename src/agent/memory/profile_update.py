@@ -15,13 +15,13 @@ from uuid import UUID
 from langchain.messages import HumanMessage, SystemMessage, ToolMessage
 
 from ..domain import MEMORY_TOOLS, MEMORY_TOOLS_BY_NAME, domain_session
-from ..llm import model
+from ..llm import STANDARD
 from ..serialize import load_family_entities
 from ..state import FlowState
 
 logger = logging.getLogger(__name__)
 
-_bound = model.bind_tools(MEMORY_TOOLS)
+_bound = STANDARD.tools(MEMORY_TOOLS)
 _MAX_ITERATIONS = 5
 
 
@@ -91,8 +91,12 @@ def profile_update(state: FlowState) -> dict[str, Any]:
                     except (
                         Exception
                     ) as exc:  # surface the error to the agent, keep the turn alive
+                        # Log only the exception type, not the message: the message may
+                        # contain DB row data (child name, profile fields) which is PII.
                         logger.warning(
-                            "profile_update tool %s failed: %s", call["name"], exc
+                            "profile_update tool %s failed: %s",
+                            call["name"],
+                            type(exc).__name__,
                         )
                         last_had_error = True
                         content = f"Error: {exc}"

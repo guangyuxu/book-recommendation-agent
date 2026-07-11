@@ -11,6 +11,7 @@ Domains:
 - reading:         reading_history
 - book (catalog):  book_cache
 - recommendation:  recommendation_session -> recommendation_item, recommendation_feedback
+- billing:         token_usage_record
 
 Conventions shared by every table (see ._columns):
 - UUID primary key, generated server-side via gen_random_uuid().
@@ -33,6 +34,7 @@ from .recommendation import (
     RecommendationItem,
     RecommendationSession,
 )
+from .token_usage import TokenUsageRecord
 
 __all__ = [
     # shared value types
@@ -53,4 +55,6 @@ __all__ = [
     "RecommendationSession",
     "RecommendationItem",
     "RecommendationFeedback",
+    # billing
+    "TokenUsageRecord",
 ]

@@ -18,7 +18,7 @@ from ..domain import (
     domain_session,
     save_recommendation_items,
 )
-from ..llm import model
+from ..llm import STANDARD
 from ..state import FlowState
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ def _compose(state: FlowState, rendered: str) -> str:
             f"{_confirmation_note(state)}"
         )
     )
-    reply = model.invoke([system, *state["messages"]])
+    reply = STANDARD.chain().invoke([system, *state["messages"]])
     return str(reply.content)
 
 

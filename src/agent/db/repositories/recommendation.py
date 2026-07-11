@@ -26,9 +26,17 @@ class RecommendationSessionRepository(SQLAlchemySyncRepository[RecommendationSes
             filters.append(LimitOffset(limit, 0))
         return self.get_many(*filters, order_by=RecommendationSession.created_at.desc())
 
-    def latest_for_child(self, child_id: UUID) -> RecommendationSession | None:
+    def latest_for_child(
+        self, child_id: UUID, family_id: UUID
+    ) -> RecommendationSession | None:
+        """Return the most recent session for child_id, scoped to family_id.
+
+        family_id is mandatory to prevent cross-family data leakage when child UUIDs
+        are guessable or shared across tenants.
+        """
         rows = self.get_many(
             RecommendationSession.target_child_id == child_id,
+            RecommendationSession.family_id == family_id,
             LimitOffset(1, 0),
             order_by=RecommendationSession.created_at.desc(),
         )

@@ -12,12 +12,12 @@ from typing import Any, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 from ..capabilities import REGISTRY, required_inputs
-from ..llm import model
+from ..llm import FAST
 from ..state import FlowState
 from .plan import ambient_satisfied
 from .schemas import ClarificationDecision
 
-_structured = model.with_structured_output(ClarificationDecision)
+_structured = FAST.structured(ClarificationDecision)
 
 
 def _ask(decision: ClarificationDecision) -> dict[str, Any]:

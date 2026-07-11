@@ -69,6 +69,12 @@ class FlowState(TypedDict, total=False):
     capability_results: dict[str, dict[str, Any]]
     memory_operations: list[dict[str, Any]]
 
+    # LangGraph thread_id (from config["configurable"]["thread_id"]); None without checkpointer.
+    # Stored in state for observability; the usage_tracker contextvar is the authoritative source.
+    thread_id: str | None
+    # Stable identifier for this invocation turn; generated in load_context.
+    turn_id: str
+
 
 class AppContext(BaseModel):
     """Per-request runtime input (not in state, not checkpointed), via LangGraph's context channel.

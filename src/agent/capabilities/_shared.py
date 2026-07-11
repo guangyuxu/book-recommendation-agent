@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain.messages import SystemMessage
 
-from ..llm import model
+from ..llm import STANDARD, Strategy
 
 
 def target_child(state: dict[str, Any]) -> dict[str, Any] | None:
@@ -118,12 +118,19 @@ def upstream_brief(state: dict[str, Any]) -> str:
     return "From earlier steps this turn:\n" + "\n\n".join(parts)
 
 
-def run_text(state: dict[str, Any], instructions: str) -> str:
+def run_text(
+    state: dict[str, Any],
+    instructions: str,
+    *,
+    strategy: Strategy | None = None,
+) -> str:
     """Run a one-shot LLM call over the conversation with capability instructions.
 
-    Returns the reply text. Callers wrap it under their produced-resource key, e.g.
-    `{"evaluation": run_text(...)}`.
+    Pass `strategy=HEAVY` for deep-analysis capabilities (evaluate, compare) or leave
+    unset to use STANDARD. Returns the reply text; callers wrap it under their
+    produced-resource key, e.g. `{"evaluation": run_text(..., strategy=HEAVY)}`.
     """
+    _strategy = strategy if strategy is not None else STANDARD
     blocks = [
         instructions,
         f"Target child profile:\n{child_brief(state)}",
@@ -131,7 +138,7 @@ def run_text(state: dict[str, Any], instructions: str) -> str:
     ]
     if upstream := upstream_brief(state):
         blocks.append(upstream)
-    reply = model.invoke(
+    reply = _strategy.chain().invoke(
         [SystemMessage(content="\n\n".join(blocks)), *state["messages"]]
     )
     return str(reply.content)

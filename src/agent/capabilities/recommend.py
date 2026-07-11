@@ -11,7 +11,7 @@ from typing import Any, cast
 from langchain.messages import SystemMessage
 from pydantic import BaseModel, Field
 
-from ..llm import model
+from ..llm import HEAVY
 from ._shared import child_brief, policies_brief
 
 
@@ -32,7 +32,7 @@ class Booklist(BaseModel):
     note: str | None = None
 
 
-_structured = model.with_structured_output(Booklist)
+_structured = HEAVY.structured(Booklist)
 
 
 def run(state: dict[str, Any]) -> dict[str, Any]:

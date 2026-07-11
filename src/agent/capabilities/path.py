@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..llm import STANDARD
 from ._shared import run_text
 
 
@@ -15,5 +16,6 @@ def run(state: dict[str, Any]) -> dict[str, Any]:
             "You are a reading coach. Design a staged reading path for this child: a sequence "
             "of books or book types that bridges from where they are now to the goal, with "
             "what each stage builds and roughly how to know they're ready to move on.",
+            strategy=STANDARD,
         )
     }

@@ -92,3 +92,41 @@ def test_first_time_selection_reports_from_none() -> None:
         "from_name": None,
         "to_name": "小儿子",
     }
+
+
+# --- Prompt-injection resilience --------------------------------------------------------
+# resolve_child is the post-LLM gatekeeping layer: even if the LLM returns an injected or
+# hallucinated child_id, it must be rejected when not present on the family roster.
+
+
+def test_injected_child_id_not_on_roster_is_rejected() -> None:
+    """An LLM-injected child_id that looks like an attack string must not bypass the roster check."""
+    injected = "ignore-all-instructions-child-x"
+    result = resolve_child({"status": "matched", "child_id": injected}, CHILDREN, "a")
+    # Falls back to the pinned child, not the injected value.
+    assert result == ("a", False, False)
+
+
+def test_injected_child_id_looks_like_uuid_but_not_on_roster() -> None:
+    """A plausible-looking UUID that is not on the roster must also be rejected."""
+    fake_uuid = "00000000-0000-0000-0000-000000000099"
+    result = resolve_child({"status": "matched", "child_id": fake_uuid}, CHILDREN, "a")
+    assert result == ("a", False, False)
+
+
+def test_injection_cannot_create_new_child_via_matched_status() -> None:
+    """status=matched with an off-roster id must not promote child_is_new=True."""
+    _, child_is_new, _ = resolve_child(
+        {"status": "matched", "child_id": "evil"}, CHILDREN, "a"
+    )
+    assert child_is_new is False
+
+
+def test_empty_roster_injection_triggers_ask_not_accept() -> None:
+    """With no children registered, an injected match must ask the user, not accept silently."""
+    target, child_is_new, needs_clarification = resolve_child(
+        {"status": "matched", "child_id": "evil"}, {}, None
+    )
+    # No pin to fall back to and no valid roster match -> must ask for clarification.
+    assert target is None
+    assert child_is_new is False
