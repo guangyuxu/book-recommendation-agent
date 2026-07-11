@@ -35,10 +35,22 @@ __pycache__
 # --- LangGraph local dev artifacts ---
 .langgraph_api
 
+# --- Docs / static assets (not needed at runtime) ---
+README.md
+LICENSE
+static
+
+# --- k8s manifests (deploy-time, not runtime) ---
+k8s
+
+# --- Scripts (dev/migration tools, not imported by the app) ---
+scripts
+
 # --- IDE / OS ---
 .vscode
 .idea
 .DS_Store
+Thumbs.db
 
 # --- Tests / evals (dev-only; the runtime graph never imports these) ---
 tests

@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Python dependencies (uv / pyproject.toml)
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      langchain:
+        patterns: ["langchain*", "langgraph*"]
+      anthropic:
+        patterns: ["anthropic*", "langchain-anthropic*"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

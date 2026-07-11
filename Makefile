@@ -79,10 +79,9 @@ spell_fix:
 init-db:              ## Create schema + tables (idempotent; requires BOOK_AGENT_DATABASE_URL or .env)
 	uv run python scripts/create_tables.py
 
-graph:                ## Generate static/graph.png from the live graph definition
+graph:                ## Print Mermaid diagram for the main graph (update the mermaid block in README)
 	BOOK_AGENT_DATABASE_URL=sqlite:///:memory: uv run python -c \
-		"from agent.graph import graph; open('static/graph.png','wb').write(graph.get_graph(xray=1).draw_mermaid_png())"
-	@echo "Saved to static/graph.png"
+		"from agent.graph import graph; print(graph.get_graph(xray=1).draw_mermaid())"
 
 ######################
 # DEPLOY (local minikube)
