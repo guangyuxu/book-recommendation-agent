@@ -13,7 +13,9 @@ class ChildProfileRepository(SQLAlchemySyncRepository[ChildProfile]):
     model_type = ChildProfile
 
     def list_by_family(self, family_id: UUID) -> list[ChildProfile]:
-        return self.get_many(family_id=family_id, order_by=ChildProfile.created_at.asc())
+        return self.get_many(
+            family_id=family_id, order_by=ChildProfile.created_at.asc()
+        )
 
 
 class ChildReadingProfileRepository(SQLAlchemySyncRepository[ChildReadingProfile]):

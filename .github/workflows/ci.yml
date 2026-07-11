@@ -1,4 +1,6 @@
-# CI: lint (ruff), type-check (mypy), spelling (codespell), and unit tests.
+# CI: lint (ruff), type-check (mypy), spelling (codespell), and unit tests against Postgres.
+# The job runs inside a Python 3.13 container (sandbox isolation); Postgres runs as a service
+# container and is reachable at hostname "postgres" within the job.
 
 name: CI
 
@@ -20,45 +22,58 @@ concurrency:
 jobs:
   ci:
     name: CI
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        # Must satisfy requires-python (>=3.13) in pyproject.toml, else `uv pip install` fails.
-        python-version: ["3.13"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+
+    # Run every step inside a Python 3.13 container for reproducible sandbox isolation.
+    container:
+      image: python:3.13-slim
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # BOOK_AGENT_DATABASE_URL is visible to all steps; unit_tests/conftest.py uses setdefault
+    # so this wins over the sqlite:///:memory: fallback and tests run against real Postgres.
+    env:
+      BOOK_AGENT_DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/ci?options=-csearch_path%3Dbook_agent
+
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: pip install uv
+
+      # uv sync installs the project + the dev group (ruff, mypy, codespell, pytest, coverage).
       - name: Install dependencies
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv venv
-          uv pip install -r pyproject.toml
+        run: uv sync
+
       - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Type-check with mypy
+        # Config-driven: reads [tool.mypy] in pyproject.toml (the single source of truth --
+        # strict = true, files = src/agent). No --strict flag or path args, so CI, the
+        # Makefile, and the IDE all enforce the exact same standard.
+        run: uv run mypy
+
+      - name: Check spelling
         run: |
-          uv pip install ruff
-          uv run ruff check .
-      - name: Lint with mypy
-        run: |
-          uv pip install mypy
-          # Config-driven: reads [tool.mypy] in pyproject.toml (the single source of truth --
-          # strict = true, files = src/agent). No --strict flag or path args, so CI, the
-          # Makefile, and the IDE all enforce the exact same standard.
-          uv run mypy
-      - name: Check README spelling
-        uses: codespell-project/actions-codespell@v2
-        with:
-          ignore_words_file: .codespellignore
-          path: README.md
-      - name: Check code spelling
-        uses: codespell-project/actions-codespell@v2
-        with:
-          ignore_words_file: .codespellignore
-          path: src/
+          uv run codespell --skip ./.git --ignore-words .codespellignore README.md
+          uv run codespell --skip ./.git --ignore-words .codespellignore src/
+
+      # Create the book_agent schema and all tables before running tests.
+      # init_db() is idempotent (CREATE SCHEMA IF NOT EXISTS + create_all skips existing tables).
+      - name: Set up database
+        run: uv run python -c "from agent.db import init_db; init_db()"
+
       - name: Run tests with pytest
-        run: |
-          uv pip install pytest
-          uv run pytest tests/unit_tests
+        run: uv run pytest tests/unit_tests

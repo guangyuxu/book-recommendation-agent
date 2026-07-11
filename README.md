@@ -1,81 +1,199 @@
-# New LangGraph Project
+# Book Recommendation Agent
 
 [![CI](https://github.com/guangyuxu/book-recommendation-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/guangyuxu/book-recommendation-agent/actions/workflows/ci.yml)
 
-This template demonstrates a simple application implemented using [LangGraph](https://github.com/langchain-ai/langgraph), designed for showing how to get started with [LangGraph Server](https://langchain-ai.github.io/langgraph/concepts/langgraph_server/#langgraph-server) and using [LangGraph Studio](https://langchain-ai.github.io/langgraph/concepts/langgraph_studio/), a visual debugging IDE.
+An AI-powered book recommendation assistant for families, built on [LangGraph](https://github.com/langchain-ai/langgraph) and Claude (Anthropic). The agent understands reading preferences, child profiles, and family context to make personalized book recommendations, generate discussion questions, plan reading paths, and track reading history.
 
-<div align="center">
-  <img src="./static/studio_ui.png" alt="Graph view in LangGraph studio UI" width="75%" />
-</div>
+## Architecture
 
-The core logic defined in `src/agent/graph.py`, showcases an single-step application that responds with a fixed string and the configuration provided.
+The agent is a `StateGraph` pipeline with parallel branches and a human-in-the-loop (HITL) confirmation gate:
 
-You can extend this graph to orchestrate more complex agentic workflows that can be visualized and debugged in LangGraph Studio.
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	load_context(load_context)
+	understand(understand)
+	plan(plan)
+	clarify(clarify)
+	execute(execute)
+	respond(respond)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> load_context;
+	clarify -. &nbsp;ask_user&nbsp; .-> __end__;
+	clarify -.-> execute;
+	clarify -.-> memory\3amemory_policy;
+	execute --> respond;
+	load_context --> understand;
+	memory\3aprofile_update --> respond;
+	plan --> clarify;
+	understand --> plan;
+	respond --> __end__;
+	subgraph memory
+	memory\3amemory_policy(memory_policy)
+	memory\3aprepare_confirmation(prepare_confirmation)
+	memory\3arequest_confirmation(request_confirmation)
+	memory\3aapply_confirmation(apply_confirmation)
+	memory\3aprofile_update(profile_update)
+	memory\3aapply_confirmation --> memory\3aprofile_update;
+	memory\3amemory_policy --> memory\3aprepare_confirmation;
+	memory\3aprepare_confirmation -. &nbsp;skip&nbsp; .-> memory\3aprofile_update;
+	memory\3aprepare_confirmation -. &nbsp;confirm&nbsp; .-> memory\3arequest_confirmation;
+	memory\3arequest_confirmation --> memory\3aapply_confirmation;
+	end
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+```
 
-## Getting Started
+| Node | Role |
+|---|---|
+| `load_context` | Loads family, members, children, and policies from DB into state |
+| `understand` | NLU: extracts intents, child references, and user signals from the message |
+| `plan` | Deterministic planner: maps intents → capability DAG (no LLM, fully testable) |
+| `clarify` | Checks plan feasibility; routes to `ask_user` or proceeds |
+| `execute` | Runs capabilities in dependency order; exceptions are isolated per capability |
+| `memory` | Memory subgraph: extracts profile updates, optionally pauses for HITL confirmation |
+| `respond` | Composes the final reply from capability results and memory outcome |
 
-1. Install dependencies, along with the [LangGraph CLI](https://langchain-ai.github.io/langgraph/concepts/langgraph_cli/), which will be used to run the server.
+**Capabilities**: `recommend`, `evaluate`, `compare`, `discussion`, `path`, `content`
+
+The `memory` subgraph runs in parallel with `execute`. When HITL confirmation is required, `interrupt()` fires in the memory branch only — the `execute` branch has already checkpointed, so it does not re-run on resume.
+
+## Prerequisites
+
+- Python 3.13+
+- [uv](https://github.com/astral-sh/uv) package manager
+- PostgreSQL (for the app's `BOOK_AGENT_DATABASE_URL` and LangGraph Server's `DATABASE_URI`)
+- Redis (for LangGraph Server's checkpointer: `REDIS_URI`)
+- Anthropic API key
+
+## Setup
+
+**1. Clone and install dependencies**
 
 ```bash
-cd path/to/your/app
-pip install -e . "langgraph-cli[inmem]"
+git clone <repo-url>
+cd book-recommendation-agent
+uv sync
 ```
 
-2. (Optional) Customize the code and project as needed. Create a `.env` file if you need to use secrets.
+**2. Create `.env`**
 
 ```bash
-cp .env.example .env
+# Required
+ANTHROPIC_API_KEY=sk-ant-...
+
+# App database (SQLAlchemy psycopg driver, search_path pinned to book_agent schema)
+BOOK_AGENT_DATABASE_URL=postgresql+psycopg://user:password@host:5432/dbname?options=-csearch_path%3Dbook_agent
+
+# LangGraph Server (postgres:// scheme, not postgresql+psycopg://)
+DATABASE_URI=postgres://user:password@host:5432/dbname?sslmode=disable
+REDIS_URI=redis://:password@host:6379
+
+# Optional: LangSmith tracing
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=book-recommendation-agent
 ```
 
-If you want to enable LangSmith tracing, add your LangSmith API key to the `.env` file.
+**3. Create the database schema and tables**
 
-```text
-# .env
-LANGSMITH_API_KEY=lsv2...
+```bash
+make init-db
 ```
 
-3. Start the LangGraph Server.
+This runs `CREATE SCHEMA IF NOT EXISTS book_agent` and `Base.metadata.create_all` (idempotent — existing tables are never dropped).
 
-```shell
+**4. Start the development server**
+
+```bash
 langgraph dev
 ```
 
-For more information on getting started with LangGraph Server, [see here](https://langchain-ai.github.io/langgraph/tutorials/langgraph-platform/local-server/).
+The LangGraph API starts at `http://localhost:2024`. Open [LangGraph Studio](https://langchain-ai.github.io/langgraph/concepts/langgraph_studio/) to inspect graph state, edit checkpoints, and replay nodes.
 
-## How to customize
+### Runtime context
 
-1. **Define runtime context**: Modify the `Context` class in the `graph.py` file to expose the arguments you want to configure per assistant. For example, in a chatbot application you may want to define a dynamic system prompt or LLM to use. For more information on runtime context in LangGraph, [see here](https://langchain-ai.github.io/langgraph/agents/context/?h=context#static-runtime-context).
+Each API call requires an `AppContext` configuration:
 
-2. **Extend the graph**: The core logic of the application is defined in [graph.py](./src/agent/graph.py). You can modify this file to add new nodes, edges, or change the flow of information.
+```json
+{
+  "family_id": "<uuid>",
+  "family_member_id": "<uuid>",
+  "child_id": "<uuid>"
+}
+```
+
+`child_id` is optional. When omitted, the agent infers the target child from the conversation or asks for clarification if the family has more than one child.
 
 ## Development
 
-While iterating on your graph in LangGraph Studio, you can edit past state and rerun your app from previous states to debug specific nodes. Local changes will be automatically applied via hot reload.
-
-Follow-up requests extend the same thread. You can create an entirely new thread, clearing previous history, using the `+` button in the top right.
-
-For more advanced features and examples, refer to the [LangGraph documentation](https://langchain-ai.github.io/langgraph/). These resources can help you adapt this template for your specific use case and build more sophisticated conversational agents.
-
-LangGraph Studio also integrates with [LangSmith](https://smith.langchain.com/) for more in-depth tracing and collaboration with teammates, allowing you to analyze and optimize your chatbot's performance.
-
-## Local checks (mirror CI)
-
-Everything the [CI workflow](./.github/workflows/ci.yml) runs on push / PR can be reproduced locally. Install the dev tooling once, then run the whole pipeline with a single command:
-
 ```bash
-uv sync            # installs ruff, mypy, pytest, codespell, coverage (the dev group)
-make ci            # runs the exact CI pipeline; exits non-zero on the first failure
+uv sync        # install dev tooling (ruff, mypy, pytest, codespell, coverage)
+make ci        # run the full CI pipeline locally before pushing
 ```
 
-`make ci` runs these five steps, in the same order and with the same config as CI:
+`make ci` runs these steps in the same order as the GitHub Actions workflow:
 
 | Step | Command | What it checks |
-| --- | --- | --- |
-| 1. Lint | `ruff check .` | style / lint rules |
-| 2. Types | `mypy` | strict type checking (config in `[tool.mypy]`) |
-| 3. Spelling (README) | `codespell --ignore-words .codespellignore README.md` | typos in the README |
-| 4. Spelling (src) | `codespell --ignore-words .codespellignore src/` | typos in the source |
-| 5. Tests | `pytest tests/unit_tests` | unit tests (no network / no LLM calls) |
+|---|---|---|
+| 1. Lint | `ruff check .` | style and lint rules |
+| 2. Types | `mypy` | strict type checking (`[tool.mypy]` in pyproject.toml) |
+| 3. Spelling | `codespell README.md src/` | typos in README and source |
+| 4. Tests | `pytest tests/unit_tests` | unit tests (sqlite in-memory by default) |
 
-If you don't use `make`, run the commands in the table directly (prefix each with `uv run` when outside an activated venv). For day-to-day work, `make lint` is a stricter superset of steps 1–2 that also diffs formatting and import order, and `make coverage` runs the tests with a coverage report.
+CI runs tests against a real Postgres service container. To replicate that locally:
 
+```bash
+export BOOK_AGENT_DATABASE_URL=postgresql+psycopg://...
+make init-db
+make test
+```
+
+### Common targets
+
+```bash
+make test              # unit tests
+make test_watch        # watch mode
+make coverage          # unit tests with coverage report
+make lint              # ruff + format diff + mypy
+make format            # auto-format with ruff
+make spell_check       # codespell on README.md and src/
+make spell_fix         # auto-fix spelling
+make init-db           # create/update DB schema and tables
+```
+
+### Evals (LLM quality gates)
+
+Node-level evals under `evals/` measure output quality against stored thresholds. They call the Anthropic API and are opt-in via `RUN_EVAL=1`:
+
+```bash
+make eval                       # gate all nodes
+make eval_node NODE=understand  # gate one node
+make eval_produce               # regenerate thresholds
+```
+
+See [`evals/README.md`](evals/README.md) for the full workflow.
+
+## Deployment (minikube)
+
+```bash
+make deploy     # first-time: build image, apply k8s manifests, create Secret from .env, roll out
+make redeploy   # after code changes: rebuild + rollout (most common)
+make k8s-logs   # follow pod logs
+make k8s-pf     # port-forward to localhost:8000
+make k8s-down   # tear down the entire namespace
+```
+
+Kubernetes manifests live in `k8s/`. Secrets are populated from `.env` via `kubectl create secret`. Use `make k8s-secret` after editing `.env` without redeploying the image.
+
+To pin a release tag:
+
+```bash
+make redeploy TAG=1.0.0
+```

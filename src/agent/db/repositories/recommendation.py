@@ -39,7 +39,9 @@ class RecommendationItemRepository(SQLAlchemySyncRepository[RecommendationItem])
     model_type = RecommendationItem
 
     def list_by_session(self, session_id: UUID) -> list[RecommendationItem]:
-        return self.get_many(session_id=session_id, order_by=RecommendationItem.rank.asc())
+        return self.get_many(
+            session_id=session_id, order_by=RecommendationItem.rank.asc()
+        )
 
 
 class RecommendationFeedbackRepository(

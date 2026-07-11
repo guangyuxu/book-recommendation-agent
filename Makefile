@@ -1,44 +1,30 @@
-.PHONY: all format lint test tests test_watch coverage ci help extended_tests \
+.PHONY: all format format_diff lint lint_diff \
+	test coverage ci \
+	eval eval_classify eval_judge eval_node eval_produce \
+	spell_check spell_fix init-db \
 	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
-	k8s-status k8s-logs k8s-pf k8s-down
+	k8s-status k8s-logs k8s-pf k8s-down help
 
 # Default target executed when no arguments are given to make.
 all: help
 
-# Define a variable for the test file path.
-TEST_FILE ?= tests/unit_tests/
-
 test:
-	python -m pytest $(TEST_FILE)
-
-tests: test   # alias so `make tests` works too
-
-# No integration_tests target: tests/integration_tests/ is an empty placeholder. When you add
-# end-to-end tests there, run them with `RUN_INTEGRATION=1 python -m pytest tests/integration_tests`.
-
-test_watch:
-	python -m ptw --snapshot-update --now . -- -vv tests/unit_tests
-
-test_profile:
-	python -m pytest -vv tests/unit_tests/ --profile-svg
+	uv run pytest tests/
 
 coverage:
-	python -m coverage run -m pytest tests/unit_tests/
-	python -m coverage report
+	uv run coverage run -m pytest tests/
+	uv run coverage report
 
 # Faithful mirror of .github/workflows/ci.yml -- run this before pushing to catch what CI catches.
-# Same commands, same order: ruff check -> mypy (strict, config-driven) -> codespell -> unit tests.
-# Uses `uv run` (like CI) so it works from a fresh `uv sync` without activating the venv first.
-# (`make lint` is a stricter superset for day-to-day dev: it also diffs formatting and import order.)
+# Same commands, same order: ruff check -> mypy (config-driven) -> codespell -> unit tests.
+# Tests run against sqlite:///:memory: by default (CI uses a Postgres service container).
+# To test against Postgres locally: set BOOK_AGENT_DATABASE_URL, run `make init-db`, then `make ci`.
 ci:
 	uv run ruff check .
 	uv run mypy
 	uv run codespell --skip ./.git --ignore-words .codespellignore README.md
 	uv run codespell --skip ./.git --ignore-words .codespellignore src/
-	uv run pytest tests/unit_tests
-
-extended_tests:
-	python -m pytest --only-extended $(TEST_FILE)
+	uv run pytest tests/
 
 ######################
 # EVALS (LLM output quality; opt-in, calls the Anthropic API)
@@ -47,50 +33,56 @@ extended_tests:
 # Node evals live under evals/<tree>/<node>/ (mirroring src/agent); eval_regression/ is the gate.
 # All gated on RUN_EVAL=1 so a normal `make test` never spends API tokens. See evals/README.md.
 eval:                    ## Gate ALL node evals against their thresholds (CI entrypoint)
-	RUN_EVAL=1 python -m eval_regression.run
+	RUN_EVAL=1 uv run python -m eval_regression.run
 
 eval_classify:           ## Gate only the classify-strategy nodes
-	RUN_EVAL=1 python -m eval_regression.run --strategy classify
+	RUN_EVAL=1 uv run python -m eval_regression.run --strategy classify
 
 eval_judge:              ## Gate only the judge-strategy nodes
-	RUN_EVAL=1 python -m eval_regression.run --strategy judge
+	RUN_EVAL=1 uv run python -m eval_regression.run --strategy judge
 
 eval_node:               ## Gate one node: make eval_node NODE=understand
-	RUN_EVAL=1 python -m eval_regression.run --node $(NODE)
+	RUN_EVAL=1 uv run python -m eval_regression.run --node $(NODE)
 
 eval_produce:            ## Regenerate co-located thresholds (add ARGS='--dry-run' to preview)
-	python -m eval_regression.produce $(ARGS)
+	uv run python -m eval_regression.produce $(ARGS)
 
 
 ######################
 # LINTING AND FORMATTING
 ######################
 
-# Define a variable for Python and notebook files (used to scope ruff format/import checks).
-PYTHON_FILES=src/
-lint format: PYTHON_FILES=.
-lint_diff format_diff: PYTHON_FILES=$(shell git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$')
-lint_package: PYTHON_FILES=src
-lint_tests: PYTHON_FILES=tests
+LINT_PATHS = src/ evals/ eval_regression/ tests/
+lint_diff format_diff: LINT_PATHS=$(shell git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$')
 
-lint lint_diff lint_package lint_tests:
-	python -m ruff check .
-	[ "$(PYTHON_FILES)" = "" ] || python -m ruff format $(PYTHON_FILES) --diff
-	[ "$(PYTHON_FILES)" = "" ] || python -m ruff check --select I $(PYTHON_FILES)
-	# Config-driven: reads [tool.mypy] (strict, files = src/agent) -- the same single standard
-	# CI runs. No --strict flag or path args here, so no entry point can drift.
-	python -m mypy
+lint lint_diff:
+	uv run ruff check $(LINT_PATHS)
+	[ "$(LINT_PATHS)" = "" ] || uv run ruff format $(LINT_PATHS) --diff
+	[ "$(LINT_PATHS)" = "" ] || uv run ruff check --select I $(LINT_PATHS)
+	# Config-driven: reads [tool.mypy] (strict, files = src/agent).
+	uv run mypy
 
 format format_diff:
-	ruff format $(PYTHON_FILES)
-	ruff check --select I --fix $(PYTHON_FILES)
+	uv run ruff format $(LINT_PATHS)
+	uv run ruff check --select I --fix $(LINT_PATHS)
 
-# Same scope/config as CI: .codespellignore + the README.md and src/ paths (not the whole tree).
 spell_check:
-	codespell --skip ./.git --ignore-words .codespellignore README.md src/
+	uv run codespell --skip ./.git --ignore-words .codespellignore .
 
 spell_fix:
-	codespell --skip ./.git --ignore-words .codespellignore -w README.md src/
+	uv run codespell --skip ./.git --ignore-words .codespellignore -w .
+
+######################
+# DATABASE
+######################
+
+init-db:              ## Create schema + tables (idempotent; requires BOOK_AGENT_DATABASE_URL or .env)
+	uv run python scripts/create_tables.py
+
+graph:                ## Generate static/graph.png from the live graph definition
+	BOOK_AGENT_DATABASE_URL=sqlite:///:memory: uv run python -c \
+		"from agent.graph import graph; open('static/graph.png','wb').write(graph.get_graph(xray=1).draw_mermaid_png())"
+	@echo "Saved to static/graph.png"
 
 ######################
 # DEPLOY (local minikube)
@@ -154,14 +146,13 @@ k8s-down:                ## Delete the entire book-agent namespace (Secret/Deplo
 help:
 	@echo '----'
 	@echo 'format                       - run code formatters'
-	@echo 'lint                         - run linters'
-	@echo 'test                         - run unit tests'
-	@echo 'tests                        - run unit tests'
-	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
-	@echo 'test_watch                   - run unit tests in watch mode'
-	@echo 'coverage                     - run unit tests with a coverage report'
+	@echo 'lint                         - run linters on src/ evals/ eval_regression/ tests/ (ruff + mypy)'
+	@echo 'test                         - run all tests under tests/'
+	@echo 'coverage                     - run tests with a coverage report'
 	@echo 'ci                           - mirror the full GitHub CI pipeline locally (run before pushing)'
 	@echo 'spell_check                  - check spelling in README.md and src/ (same as CI)'
+	@echo 'spell_fix                    - auto-fix spelling in README.md and src/'
+	@echo 'init-db                      - create schema + tables (idempotent; dev/CI setup)'
 	@echo 'eval                         - gate all node evals (RUN_EVAL=1, needs API key)'
 	@echo 'eval_classify                - gate only classify-strategy nodes'
 	@echo 'eval_judge                   - gate only judge-strategy nodes'
@@ -176,4 +167,3 @@ help:
 	@echo 'k8s-pf                       - port-forward to localhost:8000'
 	@echo 'k8s-down                     - delete the entire namespace'
 	@echo '  override tag: make redeploy TAG=0.1.0'
-
