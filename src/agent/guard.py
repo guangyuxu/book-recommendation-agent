@@ -9,7 +9,7 @@ instructions, ...). Above a threshold we short-circuit to END with a canned refu
 This is ONE layer of defense in depth, not the authorization boundary: business-semantic
 abuse ("bypass the age limit") is not an injection and is caught downstream by the roster /
 age / post-LLM gating, per CLAUDE.md. Accordingly, when the check itself cannot run
-(missing key, Groq rate-limit/outage, unparseable output) we FAIL OPEN -- allow the turn and
+(missing key, Groq rate-limit/outage, unparsable output) we FAIL OPEN -- allow the turn and
 log a warning -- rather than block every request behind a third-party dependency.
 
 PII: only the single latest user message is sent to Groq -- never child/family profile data.
@@ -89,7 +89,7 @@ def _get_client() -> Any | None:
 def screen(text: str) -> float | None:
     """Return the attack probability in [0, 1] for `text`, or None if the check could not run.
 
-    None is the fail-open signal (no key, transport/rate-limit error, or an unparseable
+    None is the fail-open signal (no key, transport/rate-limit error, or an unparsable
     response). Callers treat None as "allow" -- see module docstring. This function never
     raises and never logs `text`.
     """

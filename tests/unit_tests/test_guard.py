@@ -58,7 +58,7 @@ def test_screen_returns_none_without_client(monkeypatch) -> None:
     assert guard_mod.screen("anything") is None
 
 
-def test_screen_fails_open_on_unparseable_output(monkeypatch) -> None:
+def test_screen_fails_open_on_unparsable_output(monkeypatch) -> None:
     # Classifier returns a non-numeric body (malformed LLM output): must not crash, fail open.
     _use_client(monkeypatch, _fake_client("not-a-float"))
     assert guard_mod.screen("hello") is None
