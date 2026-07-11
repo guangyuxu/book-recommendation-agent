@@ -25,6 +25,8 @@ from typing import Any
 
 from langchain.messages import AIMessage, AnyMessage
 
+from .state import FlowState
+
 logger = logging.getLogger(__name__)
 
 # TODO(backend-edge): This node is ONLY the semantic prompt-injection check. The cheap,
@@ -75,7 +77,9 @@ def _get_client() -> Any | None:
     the client is built at most once per process.
     """
     if not os.getenv("GROQ_API_KEY"):
-        logger.warning("GROQ_API_KEY not set; input safety screening is disabled (fail open).")
+        logger.warning(
+            "GROQ_API_KEY not set; input safety screening is disabled (fail open)."
+        )
         return None
     from groq import Groq
 
@@ -98,7 +102,9 @@ def screen(text: str) -> float | None:
             messages=[{"role": "user", "content": text}],
         )
         raw = completion.choices[0].message.content
-        return float(raw)  # ValueError if the classifier ever returns a non-numeric body
+        return float(
+            raw
+        )  # ValueError if the classifier ever returns a non-numeric body
     except Exception as exc:  # noqa: BLE001 -- any failure is fail-open; log type only, never PII
         logger.warning("Prompt Guard screening failed: %s", type(exc).__name__)
         return None
@@ -127,7 +133,7 @@ def _latest_human_text(messages: list[AnyMessage]) -> str | None:
     return None
 
 
-def guard(state: dict[str, Any]) -> dict[str, Any]:
+def guard(state: FlowState) -> dict[str, Any]:
     """Entry node: screen the latest user message; block prompt-injection attempts.
 
     Always rewrites the `safety` channel so a prior turn's verdict never lingers. On a block,
@@ -158,6 +164,6 @@ def guard(state: dict[str, Any]) -> dict[str, Any]:
     return {"safety": {"blocked": False, "score": score}}
 
 
-def route_after_guard(state: dict[str, Any]) -> str:
+def route_after_guard(state: FlowState) -> str:
     """Conditional edge: 'blocked' short-circuits to END, 'ok' proceeds to load_context."""
     return "blocked" if (state.get("safety") or {}).get("blocked") else "ok"
