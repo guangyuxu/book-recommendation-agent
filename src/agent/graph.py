@@ -27,15 +27,20 @@ from .pipeline import (
     understand,
 )
 from .state import AppContext, FlowState
+from .usage_tracker import with_turn_context
 
 builder = StateGraph(FlowState, context_schema=AppContext)
+# load_context/plan make no LLM calls, so they are not wrapped. Every LLM-invoking node
+# is wrapped so the billing ContextVar is live when its token-usage callback fires.
 builder.add_node("load_context", load_context, retry_policy=LOAD_CONTEXT_RETRY)
-builder.add_node("understand", understand)
+builder.add_node("understand", with_turn_context(understand))
 builder.add_node("plan", plan)
-builder.add_node("clarify", clarify)
-builder.add_node("execute", execute)
-builder.add_node("memory", memory_graph)  # the memory subgraph
-builder.add_node("respond", respond)
+builder.add_node("clarify", with_turn_context(clarify))
+builder.add_node("execute", with_turn_context(execute))
+builder.add_node(
+    "memory", memory_graph
+)  # the memory subgraph (its LLM nodes wrap themselves)
+builder.add_node("respond", with_turn_context(respond))
 
 builder.add_edge(START, "load_context")
 builder.add_edge("load_context", "understand")

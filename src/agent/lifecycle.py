@@ -8,8 +8,9 @@ policies, and pins the target child when known (explicit child_id, or the only c
 
 import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from langgraph.config import get_config
 from langgraph.runtime import get_runtime
 from langgraph.types import RetryPolicy
 
@@ -47,7 +48,8 @@ def load_context(state: FlowState) -> dict[str, Any]:
     Serializes every ORM object to a dict inside the session scope so the selectin-loaded
     relationships (reading_profile, etc.) are resolved before the session closes.
     """
-    ctx: AppContext = get_runtime(AppContext).context
+    runtime = get_runtime(AppContext)
+    ctx: AppContext = runtime.context
     if ctx is None:
         logger.warning("Validation failed: request carried no context.")
         raise MissingContextError(
@@ -81,6 +83,19 @@ def load_context(state: FlowState) -> dict[str, Any]:
     else:
         target_child_id = None
 
+    # thread_id from LangGraph's run config; None when running without a checkpointer.
+    # (Runtime has no `.config`; the config lives on the runnable, via get_config().)
+    try:
+        config = get_config()
+    except Exception:
+        config = {}
+    thread_id: str | None = (config.get("configurable") or {}).get("thread_id")
+    turn_id = str(uuid4())
+
+    # turn_id/thread_id are placed in state here (once per turn); every LLM node
+    # re-establishes the billing ContextVar from them via with_turn_context, because
+    # a ContextVar set in this node would NOT be visible in any downstream node
+    # (each LangGraph node runs in its own copied context).
     return {
         "family": family_dict,
         "members": members,
@@ -88,4 +103,7 @@ def load_context(state: FlowState) -> dict[str, Any]:
         "policies": policies,
         "family_member_id": ctx.family_member_id,
         "target_child_id": target_child_id,
+        # Read by usage_tracker.with_turn_context; also handy for observability/debugging.
+        "turn_id": turn_id,
+        "thread_id": thread_id,
     }

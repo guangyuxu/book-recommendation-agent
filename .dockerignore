@@ -37,6 +37,7 @@ __pycache__
 
 # --- Docs / static assets (not needed at runtime) ---
 README.md
+CLAUDE.md
 LICENSE
 static
 

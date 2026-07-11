@@ -26,6 +26,7 @@ from .recommendation import (
     RecommendationItemRepository,
     RecommendationSessionRepository,
 )
+from .token_usage import TokenUsageRepository
 
 __all__ = [
     "FamilyRepository",
@@ -39,4 +40,5 @@ __all__ = [
     "RecommendationSessionRepository",
     "RecommendationItemRepository",
     "RecommendationFeedbackRepository",
+    "TokenUsageRepository",
 ]

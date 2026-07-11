@@ -22,6 +22,7 @@ from .models import (
     RecommendationFeedback,
     RecommendationItem,
     RecommendationSession,
+    TokenUsageRecord,
 )
 from .repositories import (
     BookCacheRepository,
@@ -35,6 +36,7 @@ from .repositories import (
     RecommendationFeedbackRepository,
     RecommendationItemRepository,
     RecommendationSessionRepository,
+    TokenUsageRepository,
 )
 
 __all__ = [
@@ -60,6 +62,7 @@ __all__ = [
     "RecommendationSession",
     "RecommendationItem",
     "RecommendationFeedback",
+    "TokenUsageRecord",
     # repositories
     "FamilyRepository",
     "FamilyMemberRepository",
@@ -72,4 +75,5 @@ __all__ = [
     "RecommendationSessionRepository",
     "RecommendationItemRepository",
     "RecommendationFeedbackRepository",
+    "TokenUsageRepository",
 ]

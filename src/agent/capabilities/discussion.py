@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..llm import STANDARD
 from ._shared import run_text
 
 
@@ -15,5 +16,6 @@ def run(state: dict[str, Any]) -> dict[str, Any]:
             "You are a reading mentor. Generate a short set of open-ended discussion and "
             "reflection questions to guide this child's thinking about the book they read. "
             "Tune the depth to the child's age and reading level.",
+            strategy=STANDARD,
         )
     }

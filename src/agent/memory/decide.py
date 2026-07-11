@@ -11,11 +11,11 @@ from typing import Any, cast
 from langchain.messages import HumanMessage, SystemMessage
 
 from ..domain import MEMORY_TOOLS_BY_NAME
-from ..llm import model
+from ..llm import FAST
 from ..state import FlowState
 from .schemas import MemoryDecision
 
-_structured = model.with_structured_output(MemoryDecision)
+_structured = FAST.structured(MemoryDecision)
 
 # The domain operations the profile_update agent can carry out. Derived from the single source
 # of truth (agent.domain.MEMORY_TOOLS) so it can never drift from the executable tool names.

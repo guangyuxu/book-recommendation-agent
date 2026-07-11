@@ -27,6 +27,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from ..state import AppContext, FlowState
+from ..usage_tracker import with_turn_context
 from .confirm import (
     apply_confirmation,
     prepare_confirmation,
@@ -36,12 +37,15 @@ from .confirm import (
 from .decide import memory_policy
 from .profile_update import profile_update
 
+# These subgraph nodes run as their own LangGraph nodes (separate contexts from the
+# parent "memory" node), so the LLM-invoking ones wrap themselves rather than relying
+# on any wrapper applied to the "memory" node in the parent graph.
 _builder = StateGraph(FlowState, context_schema=AppContext)
-_builder.add_node("memory_policy", memory_policy)
+_builder.add_node("memory_policy", with_turn_context(memory_policy))
 _builder.add_node("prepare_confirmation", prepare_confirmation)
 _builder.add_node("request_confirmation", request_confirmation)
 _builder.add_node("apply_confirmation", apply_confirmation)
-_builder.add_node("profile_update", profile_update)
+_builder.add_node("profile_update", with_turn_context(profile_update))
 
 _builder.add_edge(START, "memory_policy")
 _builder.add_edge("memory_policy", "prepare_confirmation")

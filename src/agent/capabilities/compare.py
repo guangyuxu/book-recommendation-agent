@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..llm import HEAVY
 from ._shared import run_text
 
 
@@ -15,5 +16,6 @@ def run(state: dict[str, Any]) -> dict[str, Any]:
             "You are a children's-book analyst. The user named two or more books. Compare them "
             "for this child across fit, reading difficulty, themes, and values, then give a "
             "clear recommendation on which to read first and why.",
+            strategy=HEAVY,
         )
     }
