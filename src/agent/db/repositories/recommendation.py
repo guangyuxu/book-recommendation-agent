@@ -24,10 +24,10 @@ class RecommendationSessionRepository(SQLAlchemySyncRepository[RecommendationSes
         filters: list[Any] = [RecommendationSession.family_id == family_id]
         if limit is not None:
             filters.append(LimitOffset(limit, 0))
-        return self.list(*filters, order_by=RecommendationSession.created_at.desc())
+        return self.get_many(*filters, order_by=RecommendationSession.created_at.desc())
 
     def latest_for_child(self, child_id: UUID) -> RecommendationSession | None:
-        rows = self.list(
+        rows = self.get_many(
             RecommendationSession.target_child_id == child_id,
             LimitOffset(1, 0),
             order_by=RecommendationSession.created_at.desc(),
@@ -39,7 +39,7 @@ class RecommendationItemRepository(SQLAlchemySyncRepository[RecommendationItem])
     model_type = RecommendationItem
 
     def list_by_session(self, session_id: UUID) -> list[RecommendationItem]:
-        return self.list(session_id=session_id, order_by=RecommendationItem.rank.asc())
+        return self.get_many(session_id=session_id, order_by=RecommendationItem.rank.asc())
 
 
 class RecommendationFeedbackRepository(
@@ -48,11 +48,11 @@ class RecommendationFeedbackRepository(
     model_type = RecommendationFeedback
 
     def list_by_session(self, session_id: UUID) -> list[RecommendationFeedback]:
-        return self.list(
+        return self.get_many(
             session_id=session_id, order_by=RecommendationFeedback.created_at.asc()
         )
 
     def list_by_child(self, child_id: UUID) -> list[RecommendationFeedback]:
-        return self.list(
+        return self.get_many(
             child_id=child_id, order_by=RecommendationFeedback.created_at.desc()
         )

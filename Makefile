@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test_watch coverage help extended_tests \
+.PHONY: all format lint test tests test_watch coverage ci help extended_tests \
 	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
 	k8s-status k8s-logs k8s-pf k8s-down
 
@@ -25,6 +25,17 @@ test_profile:
 coverage:
 	python -m coverage run -m pytest tests/unit_tests/
 	python -m coverage report
+
+# Faithful mirror of .github/workflows/ci.yml -- run this before pushing to catch what CI catches.
+# Same commands, same order: ruff check -> mypy (strict, config-driven) -> codespell -> unit tests.
+# Uses `uv run` (like CI) so it works from a fresh `uv sync` without activating the venv first.
+# (`make lint` is a stricter superset for day-to-day dev: it also diffs formatting and import order.)
+ci:
+	uv run ruff check .
+	uv run mypy
+	uv run codespell --skip ./.git --ignore-words .codespellignore README.md
+	uv run codespell --skip ./.git --ignore-words .codespellignore src/
+	uv run pytest tests/unit_tests
 
 extended_tests:
 	python -m pytest --only-extended $(TEST_FILE)
@@ -74,11 +85,12 @@ format format_diff:
 	ruff format $(PYTHON_FILES)
 	ruff check --select I --fix $(PYTHON_FILES)
 
+# Same scope/config as CI: .codespellignore + the README.md and src/ paths (not the whole tree).
 spell_check:
-	codespell --toml pyproject.toml
+	codespell --skip ./.git --ignore-words .codespellignore README.md src/
 
 spell_fix:
-	codespell --toml pyproject.toml -w
+	codespell --skip ./.git --ignore-words .codespellignore -w README.md src/
 
 ######################
 # DEPLOY (local minikube)
@@ -148,6 +160,8 @@ help:
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
 	@echo 'coverage                     - run unit tests with a coverage report'
+	@echo 'ci                           - mirror the full GitHub CI pipeline locally (run before pushing)'
+	@echo 'spell_check                  - check spelling in README.md and src/ (same as CI)'
 	@echo 'eval                         - gate all node evals (RUN_EVAL=1, needs API key)'
 	@echo 'eval_classify                - gate only classify-strategy nodes'
 	@echo 'eval_judge                   - gate only judge-strategy nodes'

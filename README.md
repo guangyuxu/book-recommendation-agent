@@ -58,3 +58,24 @@ For more advanced features and examples, refer to the [LangGraph documentation](
 
 LangGraph Studio also integrates with [LangSmith](https://smith.langchain.com/) for more in-depth tracing and collaboration with teammates, allowing you to analyze and optimize your chatbot's performance.
 
+## Local checks (mirror CI)
+
+Everything the [CI workflow](./.github/workflows/ci.yml) runs on push / PR can be reproduced locally. Install the dev tooling once, then run the whole pipeline with a single command:
+
+```bash
+uv sync            # installs ruff, mypy, pytest, codespell, coverage (the dev group)
+make ci            # runs the exact CI pipeline; exits non-zero on the first failure
+```
+
+`make ci` runs these five steps, in the same order and with the same config as CI:
+
+| Step | Command | What it checks |
+| --- | --- | --- |
+| 1. Lint | `ruff check .` | style / lint rules |
+| 2. Types | `mypy` | strict type checking (config in `[tool.mypy]`) |
+| 3. Spelling (README) | `codespell --ignore-words .codespellignore README.md` | typos in the README |
+| 4. Spelling (src) | `codespell --ignore-words .codespellignore src/` | typos in the source |
+| 5. Tests | `pytest tests/unit_tests` | unit tests (no network / no LLM calls) |
+
+If you don't use `make`, run the commands in the table directly (prefix each with `uv run` when outside an activated venv). For day-to-day work, `make lint` is a stricter superset of steps 1–2 that also diffs formatting and import order, and `make coverage` runs the tests with a coverage report.
+

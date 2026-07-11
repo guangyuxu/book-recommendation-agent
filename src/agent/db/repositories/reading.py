@@ -18,4 +18,4 @@ class ReadingHistoryRepository(SQLAlchemySyncRepository[ReadingHistory]):
         filters = [ReadingHistory.child_id == child_id]
         if status is not None:
             filters.append(ReadingHistory.status == status)
-        return self.list(*filters, order_by=ReadingHistory.created_at.desc())
+        return self.get_many(*filters, order_by=ReadingHistory.created_at.desc())

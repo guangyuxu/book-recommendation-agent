@@ -3,7 +3,7 @@
 The shared seam between the two places that load family context: `lifecycle.load_context`
 (turn entry) and `memory.profile_update` (refresh after writes so the frontend syncs
 same-turn). Both need the same member/child serialization with derived age, so it lives here
-rather than in either caller. Must run inside an open session so selectin relationships
+rather than in either caller. Must run inside an open session so sel1ectin relationships
 (reading_profile, member profile) resolve before serialization.
 """
 

@@ -114,7 +114,7 @@ class Understanding(BaseModel):
     @field_validator("user_signals", mode="before")
     @classmethod
     def _parse_user_signals(cls, v: Any) -> Any:
-        """Like `_parse_stringified_list`, but degrade an UNPARSEABLE string to an empty list.
+        """Like `_parse_stringified_list`, but degrade a malformed string to an empty list.
 
         user_signals is non-critical fuel for Memory Policy, and the model sometimes emits it as a
         malformed JSON string (unescaped quotes in a free-text `detail`). Crashing the whole turn
@@ -126,7 +126,7 @@ class Understanding(BaseModel):
                 return json.loads(v)
             except json.JSONDecodeError:
                 logger.warning(
-                    "understand: dropping unparseable user_signals JSON; "
+                    "understand: dropping malformed user_signals JSON; "
                     "this turn contributes no profile-extraction signals."
                 )
                 return []

@@ -22,10 +22,12 @@ dependencies = [
 
 # Dev + test tooling (uv installs these by default). anyio + pytest are test-only;
 # coverage measures unit-test coverage; langgraph-cli runs the local dev server / Studio;
-# mypy + ruff are the linters.
+# mypy + ruff are the linters; codespell is the spell checker. `make ci` runs them all so a
+# fresh `uv sync` gives you everything the GitHub CI pipeline needs to run locally.
 [dependency-groups]
 dev = [
     "anyio>=4.14.1",
+    "codespell>=2.4.2",
     "coverage[toml]>=7.15.0",
     "langgraph-cli[inmem]>=0.4.30",
     "mypy>=2.1.0",

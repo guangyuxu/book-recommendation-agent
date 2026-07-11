@@ -23,7 +23,7 @@ class FamilyMemberRepository(SQLAlchemySyncRepository[FamilyMember]):
     model_type = FamilyMember
 
     def list_by_family(self, family_id: UUID) -> list[FamilyMember]:
-        return self.list(family_id=family_id, order_by=FamilyMember.created_at.asc())
+        return self.get_many(family_id=family_id, order_by=FamilyMember.created_at.asc())
 
     def primary_user(self, family_id: UUID) -> FamilyMember | None:
         """Return the family's designated primary user, if one is flagged."""
@@ -61,4 +61,4 @@ class FamilyReadingPolicyRepository(SQLAlchemySyncRepository[FamilyReadingPolicy
                     FamilyReadingPolicy.child_id.is_(None),
                 )
             )
-        return self.list(*filters, order_by=FamilyReadingPolicy.created_at.asc())
+        return self.get_many(*filters, order_by=FamilyReadingPolicy.created_at.asc())
