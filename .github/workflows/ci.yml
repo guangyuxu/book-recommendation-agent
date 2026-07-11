@@ -1,10 +1,10 @@
-# This workflow will run unit tests for the current project
+# CI: lint (ruff), type-check (mypy), spelling (codespell), and unit tests.
 
 name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master", "dev"]
   pull_request:
   workflow_dispatch: # Allows triggering the workflow manually in GitHub UI
 
@@ -18,12 +18,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
-    name: Unit Tests
+  ci:
+    name: CI
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12"]
+        # Must satisfy requires-python (>=3.13) in pyproject.toml, else `uv pip install` fails.
+        python-version: ["3.13"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

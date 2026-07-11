@@ -1,0 +1,131 @@
+"""Shared helpers for capabilities: profile/policy briefs and a generic LLM text runner.
+
+Capabilities are LLM-only in the MVP (no retrieval/ranking/vector search). They read the
+already-loaded context from state -- they never touch the database.
+"""
+
+from __future__ import annotations
+
+from langchain.messages import SystemMessage
+
+from ..llm import model
+
+
+def target_child(state: dict) -> dict | None:
+    """Return the resolved target child's dict (with nested reading_profile), or None."""
+    cid = state.get("target_child_id")
+    children = state.get("children") or {}
+    return children.get(cid) if cid else None
+
+
+def _kv_lines(pairs: list[tuple[str, object]]) -> list[str]:
+    out = []
+    for key, value in pairs:
+        if value in (None, "", [], {}):
+            continue
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
+        out.append(f"- {key}: {value}")
+    return out
+
+
+def child_brief(state: dict) -> str:
+    """Render the target child's profile + reading profile as a compact prompt block."""
+    child = target_child(state)
+    if not child:
+        return "(no specific child resolved)"
+    rp = child.get("reading_profile") or {}
+    lines = _kv_lines(
+        [
+            ("name", child.get("display_name")),
+            ("gender", child.get("gender")),
+            ("age", child.get("age")),
+            ("grade", child.get("grade")),
+            ("reading_language", child.get("reading_language")),
+            ("reading_level_note", rp.get("reading_level_note")),
+            ("cefr_level", rp.get("cefr_level")),
+            ("lexile", rp.get("lexile")),
+            ("current_stage", rp.get("current_stage")),
+            ("interests", rp.get("interests")),
+            ("preferred_genres", rp.get("preferred_genres")),
+            ("disliked_genres", rp.get("disliked_genres")),
+            ("liked_themes", rp.get("liked_themes")),
+            ("avoid_topics", rp.get("avoid_topics")),
+            ("summary", rp.get("summary")),
+            ("notes", child.get("notes")),
+        ]
+    )
+    return "\n".join(lines) if lines else "(child on file, but profile is sparse)"
+
+
+def policies_brief(state: dict) -> str:
+    """Render the family's active reading policies (goals / constraints / topics to avoid)."""
+    goals: list[str] = []
+    constraints: list[str] = []
+    avoid: list[str] = []
+    for p in state.get("policies") or []:
+        goals += p.get("goals") or []
+        constraints += p.get("constraints") or []
+        avoid += p.get("avoid_topics") or []
+    lines = _kv_lines([("goals", goals), ("constraints", constraints), ("avoid_topics", avoid)])
+    return "\n".join(lines) if lines else "(no reading policies on file)"
+
+
+def mentioned_books(state: dict) -> list[dict]:
+    """Return the books the user named this turn (from the understanding)."""
+    return (state.get("understanding") or {}).get("mentioned_books") or []
+
+
+def _render_dep_result(name: str, result: dict) -> str:
+    """Render one dependency's output as a prompt line (books structured, prose verbatim)."""
+    books = result.get("books")
+    if isinstance(books, list) and books:
+        titles = ", ".join(
+            (b.get("title") or "") + (f" by {b['author']}" if b.get("author") else "")
+            for b in books
+            if isinstance(b, dict) and b.get("title")
+        )
+        note = result.get("note")
+        return f"- {name} recommended: {titles}" + (f" ({note})" if note else "")
+    for value in result.values():  # prose capabilities carry a single string
+        if isinstance(value, str) and value.strip():
+            return f"- {name}:\n{value}"
+    return ""
+
+
+def upstream_brief(state: dict) -> str:
+    """Render the current step's dependency outputs as a prompt block, or "" if none.
+
+    execute injects `_current_step` (with its depends_on); we pull those producers' results from
+    capability_results so a consumer capability actually sees what upstream produced this turn.
+    """
+    deps = (state.get("_current_step") or {}).get("depends_on") or []
+    results = state.get("capability_results") or {}
+    parts: list[str] = []
+    for dep in deps:
+        result = results.get(dep)
+        if not isinstance(result, dict):
+            continue
+        rendered = _render_dep_result(dep, result)
+        if rendered:
+            parts.append(rendered)
+    if not parts:
+        return ""
+    return "From earlier steps this turn:\n" + "\n\n".join(parts)
+
+
+def run_text(state: dict, instructions: str) -> str:
+    """Run a one-shot LLM call over the conversation with capability instructions.
+
+    Returns the reply text. Callers wrap it under their produced-resource key, e.g.
+    `{"evaluation": run_text(...)}`.
+    """
+    blocks = [
+        instructions,
+        f"Target child profile:\n{child_brief(state)}",
+        f"Family reading policies:\n{policies_brief(state)}",
+    ]
+    if upstream := upstream_brief(state):
+        blocks.append(upstream)
+    reply = model.invoke([SystemMessage(content="\n\n".join(blocks)), *state["messages"]])
+    return str(reply.content)
