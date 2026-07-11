@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,14 +36,18 @@ class RecommendationSession(Base):
     target_child_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("child_profile.id"), nullable=False
     )
-    intents: Mapped[list] = mapped_column(JSONType, server_default=text("'[]'"))
+    intents: Mapped[list[Any]] = mapped_column(JSONType, server_default=text("'[]'"))
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
-    understanding: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
-    plan: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
-    capability_result: Mapped[dict] = mapped_column(
+    understanding: Mapped[dict[str, Any]] = mapped_column(
         JSONType, server_default=text("'{}'")
     )
-    memory_decision: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
+    plan: Mapped[dict[str, Any]] = mapped_column(JSONType, server_default=text("'{}'"))
+    capability_result: Mapped[dict[str, Any]] = mapped_column(
+        JSONType, server_default=text("'{}'")
+    )
+    memory_decision: Mapped[dict[str, Any]] = mapped_column(
+        JSONType, server_default=text("'{}'")
+    )
     response_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
@@ -75,8 +79,10 @@ class RecommendationItem(Base):
     rank: Mapped[int | None] = mapped_column(Integer)
     recommendation_reason: Mapped[str | None] = mapped_column(Text)
     fit_summary: Mapped[str | None] = mapped_column(Text)
-    risk_notes: Mapped[list[str]] = mapped_column(TextArray, server_default=text("'{}'"))
-    metadata_: Mapped[dict] = mapped_column(
+    risk_notes: Mapped[list[str]] = mapped_column(
+        TextArray, server_default=text("'{}'")
+    )
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONType, server_default=text("'{}'")
     )
     created_at: Mapped[datetime] = _created_at()

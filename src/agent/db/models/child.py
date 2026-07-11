@@ -46,7 +46,9 @@ class ChildProfile(Base):
     display_name: Mapped[str | None] = mapped_column(Text)
     aliases: Mapped[list[str]] = mapped_column(TextArray, server_default=text("'{}'"))
     gender: Mapped[Gender | None] = _gender()
-    birth_date: Mapped[date | None] = mapped_column(Date)  # age is derived in load_context
+    birth_date: Mapped[date | None] = mapped_column(
+        Date
+    )  # age is derived in load_context
     grade: Mapped[str | None] = mapped_column(Text)
     school_system: Mapped[str | None] = mapped_column(Text)
     country_or_curriculum: Mapped[str | None] = mapped_column(Text)
@@ -58,9 +60,7 @@ class ChildProfile(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    family: Mapped[Family] = relationship(
-        back_populates="children", lazy="selectin"
-    )
+    family: Mapped[Family] = relationship(back_populates="children", lazy="selectin")
     reading_profile: Mapped[ChildReadingProfile | None] = relationship(
         back_populates="child",
         cascade="all, delete-orphan",

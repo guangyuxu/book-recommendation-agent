@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ._shared import run_text
 
 
-def run(state: dict) -> dict:
+def run(state: dict[str, Any]) -> dict[str, Any]:
     """Assess a single book's fit, themes, values, and reading difficulty for the child."""
     return {
         "evaluation": run_text(

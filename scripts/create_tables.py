@@ -10,16 +10,21 @@ production prefer Alembic migrations (create_all does not evolve changed tables,
 and concurrent create_all across replicas can race).
 """
 
+import logging
+
 from dotenv import load_dotenv
 
 load_dotenv()  # pull BOOK_AGENT_DATABASE_URL etc. from .env
 
 from agent.db import init_db  # noqa: E402  (import after load_dotenv so the URL is set)
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     init_db()
-    print("Tables created (existing tables left untouched).")
+    logger.info("Tables created (existing tables left untouched).")
 
 
 if __name__ == "__main__":

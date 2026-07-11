@@ -8,6 +8,7 @@ recommendation turns (a recommend result with a booklist and a resolved child) -
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
 
@@ -23,14 +24,14 @@ from ..state import FlowState
 logger = logging.getLogger(__name__)
 
 
-def _last_human_text(messages: list) -> str:
+def _last_human_text(messages: list[Any]) -> str:
     for m in reversed(messages):
         if getattr(m, "type", None) == "human":
             return str(m.content)
     return ""
 
 
-def _render_outputs(results: dict) -> str:
+def _render_outputs(results: dict[str, Any]) -> str:
     parts: list[str] = []
     rec = results.get("recommend")
     # noinspection PyUnresolvedReferences
@@ -45,7 +46,9 @@ def _render_outputs(results: dict) -> str:
                 extras.append(f"watch-outs: {', '.join(b['risk_notes'])}")
             suffix = f" ({'; '.join(extras)})" if extras else ""
             author = f" by {b['author']}" if b.get("author") else ""
-            lines.append(f"{i}. {b['title']}{author} — {b.get('recommendation_reason', '')}{suffix}")
+            lines.append(
+                f"{i}. {b['title']}{author} — {b.get('recommendation_reason', '')}{suffix}"
+            )
         # noinspection PyUnresolvedReferences
         if rec.get("note"):
             # noinspection PyUnresolvedReferences
@@ -60,7 +63,7 @@ def _render_outputs(results: dict) -> str:
     return "\n\n".join(parts)
 
 
-def _prose(name: str, result: dict) -> str | None:
+def _prose(name: str, result: dict[str, Any]) -> str | None:
     """Pull a prose capability's text from its declared produced-resource key.
 
     Reading the exact key (e.g. `evaluation`, `questions`) is precise: iterating dict values and
@@ -74,12 +77,14 @@ def _prose(name: str, result: dict) -> str | None:
         if isinstance(value, str) and value.strip():
             return value
     if not keys:
-        return next((v for v in result.values() if isinstance(v, str) and v.strip()), None)
+        return next(
+            (v for v in result.values() if isinstance(v, str) and v.strip()), None
+        )
     return None
 
 
 def _switch_note(state: FlowState) -> str:
-    """A hint telling the reply to acknowledge a focus switch to another child (point 2)."""
+    """Return a hint telling the reply to acknowledge a focus switch to another child (point 2)."""
     switch = state.get("child_switch") or {}
     to_name = switch.get("to_name")
     if not to_name:
@@ -91,12 +96,10 @@ def _switch_note(state: FlowState) -> str:
 
 
 def _confirmation_note(state: FlowState) -> str:
-    """A hint to acknowledge the outcome of a confirmation gate (point 1/3)."""
+    """Return a hint to acknowledge the outcome of a confirmation gate (point 1/3)."""
     status = (state.get("confirmation") or {}).get("status")
     if status == "applied":
-        return (
-            "\n\nThe parent just confirmed a profile change; briefly acknowledge that it is saved."
-        )
+        return "\n\nThe parent just confirmed a profile change; briefly acknowledge that it is saved."
     if status == "rejected":
         return (
             "\n\nThe parent declined the proposed profile change; briefly acknowledge you will "
@@ -127,7 +130,9 @@ def _compose(state: FlowState, rendered: str) -> str:
     return str(reply.content)
 
 
-def _persist_recommendation(state: FlowState, response_text: str, rec: dict) -> None:
+def _persist_recommendation(
+    state: FlowState, response_text: str, rec: dict[str, Any]
+) -> None:
     u = state.get("understanding") or {}
     items = [
         {
@@ -162,7 +167,7 @@ def _persist_recommendation(state: FlowState, response_text: str, rec: dict) -> 
         save_recommendation_items.invoke({"session_id": session_id, "items": items})
 
 
-def respond(state: FlowState) -> dict:
+def respond(state: FlowState) -> dict[str, Any]:
     """Compose the user-facing reply; persist the turn if it produced a recommendation."""
     results = state.get("capability_results") or {}
     rendered = _render_outputs(results)

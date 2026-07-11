@@ -7,6 +7,7 @@ later steps via capability_results. LLM-only in MVP -- no retrieval/ranking.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ..capabilities import REGISTRY
 from ..state import FlowState
@@ -14,7 +15,7 @@ from ..state import FlowState
 logger = logging.getLogger(__name__)
 
 
-def execute(state: FlowState) -> dict:
+def execute(state: FlowState) -> dict[str, Any]:
     """Execute plan.steps, honoring depends_on, and collect each capability's result.
 
     Capabilities are independent: a failing one is logged and skipped (it simply produces no
@@ -25,7 +26,7 @@ def execute(state: FlowState) -> dict:
         # Always overwrite the channel (last-write-wins) so a prior turn's results don't linger.
         return {"capability_results": {}}
 
-    results: dict[str, dict] = {}
+    results: dict[str, dict[str, Any]] = {}
     done: set[str] = set()
     progressed = True
     while steps and progressed:
@@ -38,7 +39,9 @@ def execute(state: FlowState) -> dict:
             progressed = True
             cap = REGISTRY.get(step["capability"])
             if cap is None:
-                logger.warning("execute: unknown capability %s; skipping.", step["capability"])
+                logger.warning(
+                    "execute: unknown capability %s; skipping.", step["capability"]
+                )
                 continue
             # Expose only THIS turn's results so far (never a prior turn's stale state) so
             # the capability reads exactly what its upstream steps produced this turn.

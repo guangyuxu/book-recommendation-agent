@@ -19,7 +19,7 @@ from ..db import (
     Gender,
 )
 from ._util import parse_iso_date
-from .context import current, require_child_id
+from .context import DomainContext, current, require_child_id
 
 
 @tool
@@ -64,7 +64,7 @@ def create_child(
     return f"Created child {display_name} ({child.id})."
 
 
-def _target_child(ctx) -> ChildProfile:
+def _target_child(ctx: DomainContext) -> ChildProfile:
     repo = ChildProfileRepository(session=ctx.session)
     child = repo.get_one_or_none(id=require_child_id())
     if child is None:

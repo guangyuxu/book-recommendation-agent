@@ -8,6 +8,7 @@ persistence never depends on LLM discretion.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import tool
@@ -35,7 +36,7 @@ class RecItemInput(BaseModel):
     recommendation_reason: str | None = None
     fit_summary: str | None = None
     risk_notes: list[str] = Field(default_factory=list)
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
 def _as_uuid(value: str | UUID | None) -> UUID | None:
@@ -48,10 +49,10 @@ def _as_uuid(value: str | UUID | None) -> UUID | None:
 def create_recommendation_session(
     user_message: str,
     intents: list[str] | None = None,
-    understanding: dict | None = None,
-    plan: dict | None = None,
-    capability_result: dict | None = None,
-    memory_decision: dict | None = None,
+    understanding: dict[str, Any] | None = None,
+    plan: dict[str, Any] | None = None,
+    capability_result: dict[str, Any] | None = None,
+    memory_decision: dict[str, Any] | None = None,
     response_text: str | None = None,
     requester_member_id: str | None = None,
 ) -> str:
@@ -82,7 +83,11 @@ def save_recommendation_items(session_id: str, items: list[RecItemInput]) -> str
     item_repo = RecommendationItemRepository(session=ctx.session)
     saved = 0
     for item in items:
-        rec = item if isinstance(item, RecItemInput) else RecItemInput.model_validate(item)
+        rec = (
+            item
+            if isinstance(item, RecItemInput)
+            else RecItemInput.model_validate(item)
+        )
         book = book_repo.get_by_title_author(rec.title, rec.author)
         if book is None:
             book = BookCache(id=uuid4(), title=rec.title, author=rec.author)

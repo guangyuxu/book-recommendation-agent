@@ -51,7 +51,11 @@ def test_ambiguous_asks_when_nothing_pinned() -> None:
 
 def test_ambiguous_asks_when_pin_not_on_roster() -> None:
     # A stale/invalid pin can't disambiguate -> ask.
-    assert resolve_child({"status": "ambiguous"}, CHILDREN, "zzz") == (None, False, True)
+    assert resolve_child({"status": "ambiguous"}, CHILDREN, "zzz") == (
+        None,
+        False,
+        True,
+    )
 
 
 def test_none_reference_keeps_pin() -> None:

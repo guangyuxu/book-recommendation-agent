@@ -10,6 +10,8 @@ Run once (after migrate_add_gender_birthdate.py):
     uv run python scripts/migrate_gender_enum.py
 """
 
+import logging
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,21 +20,28 @@ from sqlalchemy import text  # noqa: E402
 
 from agent.db.base import engine  # noqa: E402
 
+logger = logging.getLogger(__name__)
+
 TABLES = ("family_member", "child_profile")
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     with engine.begin() as conn:
         for table in TABLES:
             constraint = f"ck_{table}_gender"
-            conn.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}"))
+            conn.execute(
+                text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}")
+            )
             conn.execute(
                 text(
                     f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
                     f"CHECK (gender IN ('Male', 'Female'))"
                 )
             )
-    print("Migration applied: gender constrained to 'Male'/'Female' (NULL allowed).")
+    logger.info(
+        "Migration applied: gender constrained to 'Male'/'Female' (NULL allowed)."
+    )
 
 
 if __name__ == "__main__":

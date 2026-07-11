@@ -6,7 +6,7 @@ respond node can both render it and persist it (recommendation_session + items).
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from langchain.messages import SystemMessage
 from pydantic import BaseModel, Field
@@ -35,7 +35,7 @@ class Booklist(BaseModel):
 _structured = model.with_structured_output(Booklist)
 
 
-def run(state: dict) -> dict:
+def run(state: dict[str, Any]) -> dict[str, Any]:
     """Produce a fitted, English booklist for the target child."""
     system = SystemMessage(
         content=(

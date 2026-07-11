@@ -8,7 +8,7 @@ silently let a stale pin override an explicit mention.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from langchain.messages import SystemMessage
 
@@ -21,7 +21,7 @@ _structured = model.with_structured_output(Understanding)
 
 
 def resolve_child(
-    ref: dict, children: dict[str, dict], preset: str | None
+    ref: dict[str, Any], children: dict[str, dict[str, Any]], preset: str | None
 ) -> tuple[str | None, bool, bool]:
     """Reconcile the message's child evidence with the pinned child.
 
@@ -54,8 +54,8 @@ def switch_signal(
     status: str | None,
     target_id: str | None,
     preset: str | None,
-    children: dict[str, dict],
-) -> dict:
+    children: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     """Describe a focus switch for the frontend, or {} if none happened this turn.
 
     Fires only on a confident, matched move to a *different* child than the pinned one (from
@@ -67,12 +67,14 @@ def switch_signal(
     return {
         "from": preset,
         "to": target_id,
-        "from_name": (children.get(preset) or {}).get("display_name") if preset else None,
+        "from_name": (children.get(preset) or {}).get("display_name")
+        if preset
+        else None,
         "to_name": (children.get(target_id) or {}).get("display_name"),
     }
 
 
-def _roster(children: dict[str, dict]) -> str:
+def _roster(children: dict[str, dict[str, Any]]) -> str:
     lines = []
     for cid, prof in children.items():
         rp = prof.get("reading_profile") or {}
@@ -86,7 +88,7 @@ def _roster(children: dict[str, dict]) -> str:
     return "\n".join(lines) or "(no children on file)"
 
 
-def understand(state: FlowState) -> dict:
+def understand(state: FlowState) -> dict[str, Any]:
     """Read the latest message into a structured Understanding and resolve the target child."""
     children = state.get("children") or {}
     system = SystemMessage(
@@ -117,7 +119,9 @@ def understand(state: FlowState) -> dict:
             f"Children roster:\n{_roster(children)}"
         )
     )
-    understanding = cast(Understanding, _structured.invoke([system, *state["messages"]]))
+    understanding = cast(
+        Understanding, _structured.invoke([system, *state["messages"]])
+    )
 
     # Deterministic reconciliation: explicit message reference wins over the pinned child;
     # otherwise fall back to the pin. (resolve_child owns this policy, not the LLM.)
@@ -125,7 +129,9 @@ def understand(state: FlowState) -> dict:
         understanding.child_ref.model_dump(), children, state.get("target_child_id")
     )
     u = understanding.model_dump(mode="json")
-    u["child_is_new"] = is_new  # resolved outputs downstream (memory_policy/profile_update/clarify) read
+    u["child_is_new"] = (
+        is_new  # resolved outputs downstream (memory_policy/profile_update/clarify) read
+    )
     u["child_ambiguous"] = ambiguous
 
     return {
@@ -133,6 +139,9 @@ def understand(state: FlowState) -> dict:
         "target_child_id": target_id,
         # Always written (even when {}) so a switch from an earlier turn never lingers.
         "child_switch": switch_signal(
-            understanding.child_ref.status, target_id, state.get("target_child_id"), children
+            understanding.child_ref.status,
+            target_id,
+            state.get("target_child_id"),
+            children,
         ),
     }

@@ -13,10 +13,12 @@ from langchain_core.tools import tool
 
 from ..db import ChildReadingProfile, ChildReadingProfileRepository
 from ._util import merge_unique, remove_all
-from .context import current, require_child_id
+from .context import DomainContext, current, require_child_id
 
 
-def _profile(ctx) -> tuple[ChildReadingProfile, ChildReadingProfileRepository, bool]:
+def _profile(
+    ctx: DomainContext,
+) -> tuple[ChildReadingProfile, ChildReadingProfileRepository, bool]:
     """Return (profile, repo, created) for the target child, creating an empty one if absent."""
     repo = ChildReadingProfileRepository(session=ctx.session)
     child_id = require_child_id()
@@ -27,7 +29,9 @@ def _profile(ctx) -> tuple[ChildReadingProfile, ChildReadingProfileRepository, b
     return profile, repo, created
 
 
-def _persist(profile: ChildReadingProfile, repo: ChildReadingProfileRepository, created: bool) -> None:
+def _persist(
+    profile: ChildReadingProfile, repo: ChildReadingProfileRepository, created: bool
+) -> None:
     repo.add(profile) if created else repo.update(profile)
 
 
@@ -75,7 +79,9 @@ def update_reading_interest(
     """Add or remove topics the target child is interested in (e.g. dragons, space, sports)."""
     ctx = current()
     profile, repo, created = _profile(ctx)
-    profile.interests = remove_all(merge_unique(profile.interests, add_interests), remove_interests)
+    profile.interests = remove_all(
+        merge_unique(profile.interests, add_interests), remove_interests
+    )
     _persist(profile, repo, created)
     return f"Updated interests for child {profile.child_id}."
 

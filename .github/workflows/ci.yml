@@ -44,7 +44,10 @@ jobs:
       - name: Lint with mypy
         run: |
           uv pip install mypy
-          uv run mypy --strict src/
+          # Config-driven: reads [tool.mypy] in pyproject.toml (the single source of truth --
+          # strict = true, files = src/agent). No --strict flag or path args, so CI, the
+          # Makefile, and the IDE all enforce the exact same standard.
+          uv run mypy
       - name: Check README spelling
         uses: codespell-project/actions-codespell@v2
         with:

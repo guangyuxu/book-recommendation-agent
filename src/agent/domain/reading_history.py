@@ -7,6 +7,7 @@ mentions update the same row rather than duplicating it.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -20,7 +21,7 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-def _upsert(title: str, author: str | None, **fields) -> ReadingHistory:
+def _upsert(title: str, author: str | None, **fields: Any) -> ReadingHistory:
     ctx = current()
     repo = ReadingHistoryRepository(session=ctx.session)
     child_id = require_child_id()

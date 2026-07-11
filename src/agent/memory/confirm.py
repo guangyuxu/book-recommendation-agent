@@ -23,13 +23,15 @@ only writer, which runs exactly once after the gate resolves.
 
 from __future__ import annotations
 
+from typing import Any
+
 from langgraph.types import interrupt
 
 from ..state import FlowState
 from .confirm_policy import _apply_decision, _build_request, _read_decision
 
 
-def prepare_confirmation(state: FlowState) -> dict:
+def prepare_confirmation(state: FlowState) -> dict[str, Any]:
     """Build the popup contract and decide whether a pause is needed. Runs every turn.
 
     Resets the confirmation channels so a prior turn's outcome never lingers. `confirmation`
@@ -37,7 +39,11 @@ def prepare_confirmation(state: FlowState) -> dict:
     """
     pending = _build_request(state)
     request = pending.request.model_dump() if pending is not None else {}
-    return {"confirmation_request": request, "confirmation_decision": {}, "confirmation": {}}
+    return {
+        "confirmation_request": request,
+        "confirmation_decision": {},
+        "confirmation": {},
+    }
 
 
 def route_after_prepare(state: FlowState) -> str:
@@ -45,7 +51,7 @@ def route_after_prepare(state: FlowState) -> str:
     return "confirm" if state.get("confirmation_request") else "skip"
 
 
-def request_confirmation(state: FlowState) -> dict:
+def request_confirmation(state: FlowState) -> dict[str, Any]:
     """Pause for the parent and capture their Accept/Reject reply -- the graph's ONLY interrupt.
 
     Deliberately does nothing else -- on resume LangGraph re-runs this node from the top, and a
@@ -55,7 +61,7 @@ def request_confirmation(state: FlowState) -> dict:
     return {"confirmation_decision": interrupt(state["confirmation_request"])}
 
 
-def apply_confirmation(state: FlowState) -> dict:
+def apply_confirmation(state: FlowState) -> dict[str, Any]:
     """Fold the parent's reply into the operations profile_update should persist. Pure.
 
     Recomputes the plan from state (memory_operations is unchanged since prepare, so this

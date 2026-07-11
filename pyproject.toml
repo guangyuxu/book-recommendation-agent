@@ -48,10 +48,13 @@ packages = ["langgraph.templates.agent", "agent"]
 "*" = ["py.typed"]
 
 [tool.mypy]
-# Single source of truth for type checking: the mypy CLI (`mypy`) and PyCharm's Mypy plugin
-# both read this section, so the IDE and the linter agree. PyCharm's *built-in* type inspection
-# does not understand langgraph's structural State protocols (TypedDictLikeV1/V2) and red-lines
-# valid `StateGraph(FlowState)` / `add_node(...)` calls; disable that inspection and rely on mypy.
+# Single source of truth for type checking: the mypy CLI (`mypy`), CI, the Makefile, and
+# PyCharm's Mypy plugin ALL invoke bare `mypy` and read this section, so every entry point
+# enforces the exact same standard -- no scattered `--strict` flags or path args to drift.
+# PyCharm's *built-in* type inspection does not understand langgraph's structural State
+# protocols (TypedDictLikeV1/V2) and red-lines valid `StateGraph(FlowState)` / `add_node(...)`
+# calls; disable that inspection and rely on mypy.
+strict = true
 files = ["src/agent"]
 mypy_path = "src"
 python_version = "3.13"

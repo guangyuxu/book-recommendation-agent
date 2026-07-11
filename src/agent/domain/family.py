@@ -8,6 +8,7 @@ caller passes.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -31,7 +32,9 @@ from .context import current, require_member_id
 def create_family(family_name: str | None = None, default_language: str = "en") -> str:
     """Create a new family (household). For seeding/tests; not used in normal turns."""
     ctx = current()
-    family = Family(id=uuid4(), family_name=family_name, default_language=default_language)
+    family = Family(
+        id=uuid4(), family_name=family_name, default_language=default_language
+    )
     FamilyRepository(session=ctx.session).add(family)
     return f"Created family {family.id}."
 
@@ -141,7 +144,7 @@ def update_family_reading_policy(
     goals: list[str] | None = None,
     constraints: list[str] | None = None,
     avoid_topics: list[str] | None = None,
-    content_preferences: dict | None = None,
+    content_preferences: dict[str, Any] | None = None,
     notes: str | None = None,
     child_scoped: bool = True,
 ) -> str:

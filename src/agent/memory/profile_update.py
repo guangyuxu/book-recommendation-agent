@@ -9,6 +9,7 @@ to the conversation.
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from langchain.messages import HumanMessage, SystemMessage, ToolMessage
@@ -24,7 +25,7 @@ _bound = model.bind_tools(MEMORY_TOOLS)
 _MAX_ITERATIONS = 5
 
 
-def profile_update(state: FlowState) -> dict:
+def profile_update(state: FlowState) -> dict[str, Any]:
     """Apply the turn's memory operations by calling domain tools inside one transaction."""
     u = state.get("understanding") or {}
     operations = state.get("memory_operations") or []
@@ -38,10 +39,13 @@ def profile_update(state: FlowState) -> dict:
         return {}
 
     target = state.get("target_child_id")
-    ops_text = "\n".join(
-        f"- {o.get('operation')}: {o.get('arguments')} ({o.get('rationale')})"
-        for o in operations
-    ) or "(none listed)"
+    ops_text = (
+        "\n".join(
+            f"- {o.get('operation')}: {o.get('arguments')} ({o.get('rationale')})"
+            for o in operations
+        )
+        or "(none listed)"
+    )
 
     with domain_session(
         family_id, target, requester_member_id=state.get("family_member_id")
@@ -84,8 +88,12 @@ def profile_update(state: FlowState) -> dict:
                 else:
                     try:
                         content = str(tool.invoke(call["args"]))
-                    except Exception as exc:  # surface the error to the agent, keep the turn alive
-                        logger.warning("profile_update tool %s failed: %s", call["name"], exc)
+                    except (
+                        Exception
+                    ) as exc:  # surface the error to the agent, keep the turn alive
+                        logger.warning(
+                            "profile_update tool %s failed: %s", call["name"], exc
+                        )
                         last_had_error = True
                         content = f"Error: {exc}"
                 messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
@@ -99,7 +107,7 @@ def profile_update(state: FlowState) -> dict:
     # exhausting the iteration budget mid-loop) means we must NOT tell the parent it was saved.
     writes_failed = made_calls and (last_had_error or not stopped_cleanly)
 
-    out: dict = {"members": members, "children": children}
+    out: dict[str, Any] = {"members": members, "children": children}
     if new_target and new_target != target:
         out["target_child_id"] = new_target
 
@@ -107,6 +115,8 @@ def profile_update(state: FlowState) -> dict:
     # not falsely acknowledge it as saved. Untouched on the soft/skip path (status != "applied").
     confirmation = state.get("confirmation") or {}
     if writes_failed and confirmation.get("status") == "applied":
-        logger.warning("profile_update: confirmed writes failed to persist; reporting error.")
+        logger.warning(
+            "profile_update: confirmed writes failed to persist; reporting error."
+        )
         out["confirmation"] = {**confirmation, "status": "error"}
     return out

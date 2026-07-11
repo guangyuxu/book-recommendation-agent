@@ -11,8 +11,9 @@ Two phases, split across the seam of the interrupt():
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from ..state import FlowState
 from .schemas import (
@@ -21,6 +22,8 @@ from .schemas import (
     ConfirmationRequest,
     MemberRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 # Operations whose writes are high-stakes and must be confirmed before applying.
 _CONFIRM_TOOLS = {"create_child", "update_child_basic_info", "update_member_basic_info"}
@@ -57,8 +60,10 @@ class _Pending:
 
     kind: str
     request: ConfirmationRequest
-    auto: list[dict]  # ops that apply regardless of the decision
-    bundled_soft: list[dict]  # soft ops gated only because a create bundled them
+    auto: list[dict[str, Any]]  # ops that apply regardless of the decision
+    bundled_soft: list[
+        dict[str, Any]
+    ]  # soft ops gated only because a create bundled them
     child: ChildRecord | None
     member: MemberRecord | None
     creating: bool
@@ -67,15 +72,17 @@ class _Pending:
 # --- shared helpers ---------------------------------------------------------------------
 
 
-def _is_create(op: dict) -> bool:
+def _is_create(op: dict[str, Any]) -> bool:
     return _norm(op.get("operation", "")) == _CREATE_NORM
 
 
-def _op_norm(op: dict) -> str:
+def _op_norm(op: dict[str, Any]) -> str:
     return _norm(op.get("operation", ""))
 
 
-def classify(operations: list[dict]) -> tuple[list[dict], list[dict]]:
+def classify(
+    operations: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split ops into (auto, needs_confirmation).
 
     If the turn creates a new child, EVERY op is gated together: the child's facts can't be
@@ -84,8 +91,8 @@ def classify(operations: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     if any(_is_create(o) for o in operations):
         return [], list(operations)
-    auto: list[dict] = []
-    gated: list[dict] = []
+    auto: list[dict[str, Any]] = []
+    gated: list[dict[str, Any]] = []
     for o in operations:
         (gated if _op_norm(o) in _CONFIRM_NORM else auto).append(o)
     return auto, gated
@@ -98,9 +105,9 @@ def _canon_gender(value: object) -> str | None:
     return _GENDER.get(str(value).strip().lower())
 
 
-def _fold(ops: list[dict]) -> dict:
+def _fold(ops: list[dict[str, Any]]) -> dict[str, Any]:
     """Merge the arguments of several identity ops into one dict (later ops win per key)."""
-    merged: dict = {}
+    merged: dict[str, Any] = {}
     for o in ops:
         merged.update(o.get("arguments") or {})
     if "gender" in merged:
@@ -108,16 +115,16 @@ def _fold(ops: list[dict]) -> dict:
     return merged
 
 
-def _build_child(ops: list[dict]) -> ChildRecord:
+def _build_child(ops: list[dict[str, Any]]) -> ChildRecord:
     # Unknown keys (e.g. a hallucinated `age`) are dropped: ChildRecord ignores extras.
     return ChildRecord.model_validate(_fold(ops))
 
 
-def _build_member(ops: list[dict]) -> MemberRecord:
+def _build_member(ops: list[dict[str, Any]]) -> MemberRecord:
     return MemberRecord.model_validate(_fold(ops))
 
 
-def _child_op(record: ChildRecord, creating: bool) -> list[dict]:
+def _child_op(record: ChildRecord, creating: bool) -> list[dict[str, Any]]:
     args = record.model_dump(exclude_none=True)
     if not args.get("aliases"):
         args.pop("aliases", None)
@@ -138,7 +145,7 @@ def _child_op(record: ChildRecord, creating: bool) -> list[dict]:
     ]
 
 
-def _member_op(record: MemberRecord) -> list[dict]:
+def _member_op(record: MemberRecord) -> list[dict[str, Any]]:
     args = record.model_dump(exclude_none=True)
     if not args:
         return []
@@ -184,7 +191,9 @@ def _build_request(state: FlowState) -> _Pending | None:
     request = ConfirmationRequest(
         kind=kind,
         question=(
-            "Save this child to your family?" if creating else "Update these identity details?"
+            "Save this child to your family?"
+            if creating
+            else "Update these identity details?"
         ),
         target_child_id=state.get("target_child_id"),
         child=child,
@@ -213,22 +222,33 @@ def _read_decision(resume: object) -> ConfirmationDecision:
         try:
             return ConfirmationDecision.model_validate(resume)
         except Exception:  # malformed payload -> safest to treat as a rejection
+            logger.warning(
+                "confirm: malformed confirmation-decision payload; treating as a rejection. "
+                "keys=%s",
+                sorted(resume.keys()),
+            )
             return ConfirmationDecision()
     return ConfirmationDecision()
 
 
-def _apply_decision(decision: ConfirmationDecision, pending: _Pending) -> dict:
+def _apply_decision(
+    decision: ConfirmationDecision, pending: _Pending
+) -> dict[str, Any]:
     """Pure. Fold the parent's reply into the operations profile_update should persist."""
     if not decision.approved:
         return {
             "memory_operations": pending.auto,
-            "confirmation": {"kind": pending.kind, "status": "rejected", "operations": []},
+            "confirmation": {
+                "kind": pending.kind,
+                "status": "rejected",
+                "operations": [],
+            },
         }
 
     # The frontend may have edited the record in the form; prefer what it sent back.
     final_child = decision.child or pending.child
     final_member = decision.member or pending.member
-    applied: list[dict] = list(pending.bundled_soft)
+    applied: list[dict[str, Any]] = list(pending.bundled_soft)
     if final_child is not None:
         applied = _child_op(final_child, pending.creating) + applied
     if final_member is not None:
@@ -236,5 +256,9 @@ def _apply_decision(decision: ConfirmationDecision, pending: _Pending) -> dict:
 
     return {
         "memory_operations": pending.auto + applied,
-        "confirmation": {"kind": pending.kind, "status": "applied", "operations": applied},
+        "confirmation": {
+            "kind": pending.kind,
+            "status": "applied",
+            "operations": applied,
+        },
     }

@@ -11,7 +11,7 @@ actual DB write, so the fields here are named to match the domain tools 1:1 (dis
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ class MemoryOperation(BaseModel):
     """A domain-level operation to persist (executed by the profile_update agent's tools)."""
 
     operation: str  # domain operation name, e.g. "UpdateReadingInterest"
-    arguments: dict = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict[str, Any])
     rationale: str = ""
 
 

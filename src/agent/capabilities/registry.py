@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from ..intents import Intent
 from . import compare, content, discussion, evaluate, path, recommend
@@ -21,7 +22,7 @@ class Capability:
     name: str
     intent: Intent
     description: str
-    run: Callable[[dict], dict]
+    run: Callable[[dict[str, Any]], dict[str, Any]]
     required_inputs: tuple[str, ...] = ()
     optional_inputs: tuple[str, ...] = ()
     produces: tuple[str, ...] = ()

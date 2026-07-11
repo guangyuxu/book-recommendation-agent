@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from advanced_alchemy.filters import LimitOffset
@@ -20,7 +21,7 @@ class RecommendationSessionRepository(SQLAlchemySyncRepository[RecommendationSes
     def list_by_family(
         self, family_id: UUID, *, limit: int | None = None
     ) -> list[RecommendationSession]:
-        filters: list = [RecommendationSession.family_id == family_id]
+        filters: list[Any] = [RecommendationSession.family_id == family_id]
         if limit is not None:
             filters.append(LimitOffset(limit, 0))
         return self.list(*filters, order_by=RecommendationSession.created_at.desc())
@@ -41,7 +42,9 @@ class RecommendationItemRepository(SQLAlchemySyncRepository[RecommendationItem])
         return self.list(session_id=session_id, order_by=RecommendationItem.rank.asc())
 
 
-class RecommendationFeedbackRepository(SQLAlchemySyncRepository[RecommendationFeedback]):
+class RecommendationFeedbackRepository(
+    SQLAlchemySyncRepository[RecommendationFeedback]
+):
     model_type = RecommendationFeedback
 
     def list_by_session(self, session_id: UUID) -> list[RecommendationFeedback]:

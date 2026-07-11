@@ -18,6 +18,8 @@ Run once:
     uv run python scripts/migrate_add_gender_birthdate.py
 """
 
+import logging
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,6 +27,8 @@ load_dotenv()
 from sqlalchemy import text  # noqa: E402
 
 from agent.db.base import engine  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 DDL = [
     # --- family_member: add new identity columns ---
@@ -51,10 +55,13 @@ DDL = [
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     with engine.begin() as conn:
         for stmt in DDL:
             conn.execute(text(stmt))
-    print("Migration applied: gender/birth_date added; legacy birth_year/age migrated & dropped.")
+    logger.info(
+        "Migration applied: gender/birth_date added; legacy birth_year/age migrated & dropped."
+    )
 
 
 if __name__ == "__main__":

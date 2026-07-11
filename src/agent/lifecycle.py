@@ -7,6 +7,7 @@ policies, and pins the target child when known (explicit child_id, or the only c
 """
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from langgraph.runtime import get_runtime
@@ -40,7 +41,7 @@ def _never_retry(exc: Exception) -> bool:
 LOAD_CONTEXT_RETRY = RetryPolicy(retry_on=_never_retry)
 
 
-def load_context(state: FlowState):
+def load_context(state: FlowState) -> dict[str, Any]:
     """Entry node: load the family's context into state and pin the target child if known.
 
     Serializes every ORM object to a dict inside the session scope so the selectin-loaded
@@ -51,7 +52,7 @@ def load_context(state: FlowState):
         logger.warning("Validation failed: request carried no context.")
         raise MissingContextError(
             "Missing required context: every request must carry family_id and "
-            'family_member_id. In Studio, set them in the run config (context); for SDK/API '
+            "family_member_id. In Studio, set them in the run config (context); for SDK/API "
             'calls pass context={"family_id": ..., "family_member_id": ...}.'
         )
 
@@ -65,7 +66,8 @@ def load_context(state: FlowState):
             )
         members, children = load_family_entities(s, fid)
         policies = [
-            p.to_dict() for p in FamilyReadingPolicyRepository(session=s).list_active(fid)
+            p.to_dict()
+            for p in FamilyReadingPolicyRepository(session=s).list_active(fid)
         ]
         family_dict = family.to_dict()
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -35,7 +36,9 @@ class BookCache(Base):
     page_count: Mapped[int | None] = mapped_column(Integer)
     published_year: Mapped[int | None] = mapped_column(Integer)
     language: Mapped[str | None] = mapped_column(Text, server_default=text("'en'"))
-    llm_summary: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
+    llm_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONType, server_default=text("'{}'")
+    )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

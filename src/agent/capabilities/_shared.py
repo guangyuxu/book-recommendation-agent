@@ -6,12 +6,14 @@ already-loaded context from state -- they never touch the database.
 
 from __future__ import annotations
 
+from typing import Any
+
 from langchain.messages import SystemMessage
 
 from ..llm import model
 
 
-def target_child(state: dict) -> dict | None:
+def target_child(state: dict[str, Any]) -> dict[str, Any] | None:
     """Return the resolved target child's dict (with nested reading_profile), or None."""
     cid = state.get("target_child_id")
     children = state.get("children") or {}
@@ -29,7 +31,7 @@ def _kv_lines(pairs: list[tuple[str, object]]) -> list[str]:
     return out
 
 
-def child_brief(state: dict) -> str:
+def child_brief(state: dict[str, Any]) -> str:
     """Render the target child's profile + reading profile as a compact prompt block."""
     child = target_child(state)
     if not child:
@@ -58,7 +60,7 @@ def child_brief(state: dict) -> str:
     return "\n".join(lines) if lines else "(child on file, but profile is sparse)"
 
 
-def policies_brief(state: dict) -> str:
+def policies_brief(state: dict[str, Any]) -> str:
     """Render the family's active reading policies (goals / constraints / topics to avoid)."""
     goals: list[str] = []
     constraints: list[str] = []
@@ -67,16 +69,18 @@ def policies_brief(state: dict) -> str:
         goals += p.get("goals") or []
         constraints += p.get("constraints") or []
         avoid += p.get("avoid_topics") or []
-    lines = _kv_lines([("goals", goals), ("constraints", constraints), ("avoid_topics", avoid)])
+    lines = _kv_lines(
+        [("goals", goals), ("constraints", constraints), ("avoid_topics", avoid)]
+    )
     return "\n".join(lines) if lines else "(no reading policies on file)"
 
 
-def mentioned_books(state: dict) -> list[dict]:
+def mentioned_books(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the books the user named this turn (from the understanding)."""
     return (state.get("understanding") or {}).get("mentioned_books") or []
 
 
-def _render_dep_result(name: str, result: dict) -> str:
+def _render_dep_result(name: str, result: dict[str, Any]) -> str:
     """Render one dependency's output as a prompt line (books structured, prose verbatim)."""
     books = result.get("books")
     if isinstance(books, list) and books:
@@ -93,7 +97,7 @@ def _render_dep_result(name: str, result: dict) -> str:
     return ""
 
 
-def upstream_brief(state: dict) -> str:
+def upstream_brief(state: dict[str, Any]) -> str:
     """Render the current step's dependency outputs as a prompt block, or "" if none.
 
     execute injects `_current_step` (with its depends_on); we pull those producers' results from
@@ -114,7 +118,7 @@ def upstream_brief(state: dict) -> str:
     return "From earlier steps this turn:\n" + "\n\n".join(parts)
 
 
-def run_text(state: dict, instructions: str) -> str:
+def run_text(state: dict[str, Any], instructions: str) -> str:
     """Run a one-shot LLM call over the conversation with capability instructions.
 
     Returns the reply text. Callers wrap it under their produced-resource key, e.g.
@@ -127,5 +131,7 @@ def run_text(state: dict, instructions: str) -> str:
     ]
     if upstream := upstream_brief(state):
         blocks.append(upstream)
-    reply = model.invoke([SystemMessage(content="\n\n".join(blocks)), *state["messages"]])
+    reply = model.invoke(
+        [SystemMessage(content="\n\n".join(blocks)), *state["messages"]]
+    )
     return str(reply.content)

@@ -23,7 +23,9 @@ TextArray = ARRAY(Text).with_variant(JSON(), "sqlite")
 
 BOOK_AGENT_DATABASE_URL = os.getenv("BOOK_AGENT_DATABASE_URL")
 if not BOOK_AGENT_DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set; configure it in .env (see the .env example)")
+    raise RuntimeError(
+        "DATABASE_URL is not set; configure it in .env (see the .env example)"
+    )
 
 _is_sqlite = BOOK_AGENT_DATABASE_URL.startswith("sqlite")
 

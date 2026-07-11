@@ -14,6 +14,7 @@ when both intents are present.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ..capabilities import AMBIENT, REGISTRY, for_intent
 from ..intents import to_intent
@@ -97,7 +98,7 @@ def _topo_order(goals: list[str], edges: list[tuple[str, str]]) -> list[str]:
     return order
 
 
-def plan(state: FlowState) -> dict:
+def plan(state: FlowState) -> dict[str, Any]:
     """Resolve the understanding's intents into an ordered, dependency-aware capability plan."""
     u = state.get("understanding") or {}
     goals = _goals(u.get("intents") or [])

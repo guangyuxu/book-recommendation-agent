@@ -7,7 +7,7 @@ appends the question and the graph routes to END; the next user turn re-enters u
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
@@ -20,14 +20,16 @@ from .schemas import ClarificationDecision
 _structured = model.with_structured_output(ClarificationDecision)
 
 
-def _ask(decision: ClarificationDecision) -> dict:
+def _ask(decision: ClarificationDecision) -> dict[str, Any]:
     return {
         "clarification": decision.model_dump(),
-        "messages": [AIMessage(content=decision.question or "Could you tell me a bit more?")],
+        "messages": [
+            AIMessage(content=decision.question or "Could you tell me a bit more?")
+        ],
     }
 
 
-def clarify(state: FlowState) -> dict:
+def clarify(state: FlowState) -> dict[str, Any]:
     """Decide whether to proceed, ask a question, or run with assumptions."""
     u = state.get("understanding") or {}
     plan = state.get("plan") or {}

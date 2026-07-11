@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Boolean,
@@ -71,7 +71,9 @@ class FamilyMember(Base):
     )
     display_name: Mapped[str | None] = mapped_column(Text)
     gender: Mapped[Gender | None] = _gender()
-    birth_date: Mapped[date | None] = mapped_column(Date)  # age is derived in load_context
+    birth_date: Mapped[date | None] = mapped_column(
+        Date
+    )  # age is derived in load_context
     role: Mapped[str] = mapped_column(Text, nullable=False)
     is_primary_user: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
@@ -82,9 +84,7 @@ class FamilyMember(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    family: Mapped[Family] = relationship(
-        back_populates="members", lazy="selectin"
-    )
+    family: Mapped[Family] = relationship(back_populates="members", lazy="selectin")
     profile: Mapped[FamilyMemberProfile | None] = relationship(
         back_populates="member",
         cascade="all, delete-orphan",
@@ -144,7 +144,7 @@ class FamilyReadingPolicy(Base):
     avoid_topics: Mapped[list[str]] = mapped_column(
         TextArray, server_default=text("'{}'")
     )
-    content_preferences: Mapped[dict] = mapped_column(
+    content_preferences: Mapped[dict[str, Any]] = mapped_column(
         JSONType, server_default=text("'{}'")
     )
     notes: Mapped[str | None] = mapped_column(Text)
@@ -154,9 +154,7 @@ class FamilyReadingPolicy(Base):
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
-    family: Mapped[Family] = relationship(
-        back_populates="policies", lazy="selectin"
-    )
+    family: Mapped[Family] = relationship(back_populates="policies", lazy="selectin")
     child: Mapped[ChildProfile | None] = relationship(lazy="selectin")
 
     __table_args__ = (

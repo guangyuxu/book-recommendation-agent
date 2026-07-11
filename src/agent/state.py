@@ -6,7 +6,7 @@ capability_results -> memory_operations) all live here as plain JSON-able dicts;
 domain tools (see agent.domain) ever touch the database.
 """
 
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from langchain.messages import AnyMessage
@@ -27,12 +27,14 @@ class FlowState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
 
     # Loaded context (lifecycle.load_context). family.id == AppContext.family_id.
-    family: dict  # Family.to_dict()
-    members: list[dict]  # FamilyMember.to_dict() rows, each with nested "profile"
+    family: dict[str, Any]  # Family.to_dict()
+    members: list[
+        dict[str, Any]
+    ]  # FamilyMember.to_dict() rows, each with nested "profile"
     children: dict[
-        str, dict
+        str, dict[str, Any]
     ]  # str(child_id) -> child dict, with nested "reading_profile"
-    policies: list[dict]  # active FamilyReadingPolicy rows for the turn
+    policies: list[dict[str, Any]]  # active FamilyReadingPolicy rows for the turn
     family_member_id: str  # AppContext.family_member_id -- who is asking
 
     # The single target child: pinned by load_context (explicit child_id or sole child) or
@@ -43,13 +45,13 @@ class FlowState(TypedDict, total=False):
     # child than the pinned one, so target_child_id moved. {from, to, from_name, to_name} for
     # the frontend to swap the avatar (and offer an undo); {} when no switch happened this turn.
     # Always rewritten by understand so a stale switch never lingers across turns.
-    child_switch: dict
+    child_switch: dict[str, Any]
 
     # Per-stage products. Dicts are model_dump()s of the pydantic schemas in agent.pipeline.schemas
     # (understanding/plan/clarification) and agent.memory.schemas (memory/confirmation).
-    understanding: dict
-    plan: dict
-    clarification: dict
+    understanding: dict[str, Any]
+    plan: dict[str, Any]
+    clarification: dict[str, Any]
     # HITL confirmation gate (point 1/3), split across three nodes:
     #   confirmation_request  -- popup payload built by prepare_confirmation ({} => skip the gate)
     #   confirmation_decision -- the Accept/Reject resume value captured by request_confirmation
@@ -58,14 +60,14 @@ class FlowState(TypedDict, total=False):
     #                            applied status to "error" if the confirmed writes fail to persist.
     # All three are rewritten every turn by prepare_confirmation (to {}) so nothing goes stale.
     # While the gate is open the graph is paused on the interrupt() in request_confirmation.
-    confirmation_request: dict
-    confirmation_decision: dict
-    confirmation: dict
+    confirmation_request: dict[str, Any]
+    confirmation_decision: dict[str, Any]
+    confirmation: dict[str, Any]
     # Capability name -> result. Last-write-wins and rewritten in full every turn by `execute`
     # (even to {} when the turn runs no capabilities), so a prior turn's results never linger
     # into this turn's render/persist. `execute` is the sole writer.
-    capability_results: dict[str, dict]
-    memory_operations: list[dict]
+    capability_results: dict[str, dict[str, Any]]
+    memory_operations: list[dict[str, Any]]
 
 
 class AppContext(BaseModel):
@@ -83,18 +85,23 @@ class AppContext(BaseModel):
       conversation.
     """
 
-    family_id: str = Field(description="UUID, The household identity. Required.", default="16555532-69b5-411e-8526-e0b321fbcfea")
+    family_id: str = Field(
+        description="UUID, The household identity. Required.",
+        default="16555532-69b5-411e-8526-e0b321fbcfea",
+    )
     family_member_id: str = Field(
-        description="UUID, The identity of the family member asking.", default="659c1323-f47a-40eb-a0fe-5fb83f47c9c9"
+        description="UUID, The identity of the family member asking.",
+        default="659c1323-f47a-40eb-a0fe-5fb83f47c9c9",
     )
     child_id: str | None = Field(
-        default="d63ae622-797b-4a1c-ae88-9c4309fb3b3a", description="UUID, The identity of the child being asked about."
+        default="d63ae622-797b-4a1c-ae88-9c4309fb3b3a",
+        description="UUID, The identity of the child being asked about.",
     )
 
     @field_validator("family_id", "family_member_id", "child_id")
     @classmethod
     def _valid_uuid(cls, v: str | None) -> str | None:
-        """Required fields must be present; any present id must be a parseable UUID string.
+        """Validate that required fields are present and any present id is a parseable UUID string.
 
         We validate the UUID *format* here (at the boundary) but keep the field a str so the
         loaded context stays JSON-able. Existence in the DB is checked later in load_context.

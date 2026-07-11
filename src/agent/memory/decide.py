@@ -6,7 +6,7 @@ that the profile_update node executes via tools.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from langchain.messages import HumanMessage, SystemMessage
 
@@ -22,7 +22,7 @@ _structured = model.with_structured_output(MemoryDecision)
 _AVAILABLE_OPERATIONS = ", ".join(MEMORY_TOOLS_BY_NAME)
 
 
-def memory_policy(state: FlowState) -> dict:
+def memory_policy(state: FlowState) -> dict[str, Any]:
     """Decide which durable facts from this turn to persist, as domain operations."""
     u = state.get("understanding") or {}
     signals = u.get("user_signals") or []
@@ -48,10 +48,9 @@ def memory_policy(state: FlowState) -> dict:
         )
     )
     human = HumanMessage(
-        content=(
-            f"child_is_new={u.get('child_is_new')}\n"
-            f"user_signals={signals}"
-        )
+        content=(f"child_is_new={u.get('child_is_new')}\nuser_signals={signals}")
     )
-    result = cast(MemoryDecision, _structured.invoke([system, human, *state["messages"]]))
+    result = cast(
+        MemoryDecision, _structured.invoke([system, human, *state["messages"]])
+    )
     return {"memory_operations": [op.model_dump() for op in result.operations]}

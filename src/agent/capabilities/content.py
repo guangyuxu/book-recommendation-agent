@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ._shared import run_text
 
 
-def run(state: dict) -> dict:
+def run(state: dict[str, Any]) -> dict[str, Any]:
     """Draft the requested content (article, copy, social post), informed by the context."""
     return {
         "draft": run_text(

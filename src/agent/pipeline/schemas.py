@@ -9,11 +9,14 @@ agent.memory.schemas.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..intents import Intent
+
+logger = logging.getLogger(__name__)
 
 # --- understand -------------------------------------------------------------------------
 
@@ -41,7 +44,9 @@ class UserSignal(BaseModel):
             "constraint that applies regardless of person."
         )
     )
-    kind: Literal["preference", "attribute", "activity", "goal", "constraint", "other"] = Field(
+    kind: Literal[
+        "preference", "attribute", "activity", "goal", "constraint", "other"
+    ] = Field(
         description=(
             "Coarse, subject-independent type of the fact. 'preference' = likes/dislikes/tastes; "
             "'attribute' = a stable trait or fact (age, reading level, occupation, available "
@@ -120,6 +125,10 @@ class Understanding(BaseModel):
             try:
                 return json.loads(v)
             except json.JSONDecodeError:
+                logger.warning(
+                    "understand: dropping unparseable user_signals JSON; "
+                    "this turn contributes no profile-extraction signals."
+                )
                 return []
         return v
 
@@ -161,4 +170,6 @@ class ClarificationDecision(BaseModel):
     decision: Literal["continue", "ask_user", "best_effort"]
     missing_inputs: list[str] = Field(default_factory=list)
     question: str | None = None  # set iff decision == "ask_user"
-    assumptions: list[str] = Field(default_factory=list)  # set iff decision == "best_effort"
+    assumptions: list[str] = Field(
+        default_factory=list
+    )  # set iff decision == "best_effort"

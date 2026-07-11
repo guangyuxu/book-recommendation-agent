@@ -41,7 +41,9 @@ def test_malformed_user_signals_degrades_to_empty() -> None:
 def test_native_lists_still_work() -> None:
     u = Understanding(
         intents=["book_evaluation"],
-        user_signals=[{"about": "member", "kind": "attribute", "detail": "busy parent"}],
+        user_signals=[
+            {"about": "member", "kind": "attribute", "detail": "busy parent"}
+        ],
     )
     assert u.user_signals[0].about == "member"
     assert [i.value for i in u.intents] == ["book_evaluation"]

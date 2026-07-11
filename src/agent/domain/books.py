@@ -6,6 +6,7 @@ by their unique (title, author) key.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -14,7 +15,9 @@ from ..db import BookCache, BookCacheRepository
 from .context import current
 
 
-def _get_or_create(repo: BookCacheRepository, title: str, author: str | None) -> tuple[BookCache, bool]:
+def _get_or_create(
+    repo: BookCacheRepository, title: str, author: str | None
+) -> tuple[BookCache, bool]:
     row = repo.get_by_title_author(title, author)
     if row is not None:
         return row, False
@@ -88,7 +91,9 @@ def update_book_metadata(
 
 
 @tool
-def update_book_summary(title: str, llm_summary: dict, author: str | None = None) -> str:
+def update_book_summary(
+    title: str, llm_summary: dict[str, Any], author: str | None = None
+) -> str:
     """Store an LLM-generated structured summary for a cached book (upserts the book if new)."""
     repo = BookCacheRepository(session=current().session)
     row, created = _get_or_create(repo, title, author)
