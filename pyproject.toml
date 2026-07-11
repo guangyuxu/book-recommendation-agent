@@ -17,7 +17,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "sqlalchemy>=2.0",
-    "typing-extensions>=4.0",
+    "typing-extensions>=4.16.0",
 ]
 
 # Dev + test tooling (uv installs these by default). anyio + pytest are test-only;
