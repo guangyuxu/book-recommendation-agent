@@ -30,9 +30,9 @@ jobs:
       # from both the runner and the container.
       UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .cache/uv
           key: uv-lint-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -85,9 +85,9 @@ jobs:
       BOOK_AGENT_DATABASE_URL: postgresql+psycopg://ci:ci@postgres:5432/ci?options=-csearch_path%3Dbook_agent
       UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: .cache/uv
           key: uv-test-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -110,7 +110,7 @@ jobs:
           uv run coverage xml
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml
@@ -120,7 +120,7 @@ jobs:
     name: Docker build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set image tag
         id: tag

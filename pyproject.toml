@@ -84,6 +84,7 @@ source = ["src/agent"]
 show_missing = true
 
 [tool.ruff]
+exclude = [".cache", ".venv", "venv"]
 lint.select = [
     "E",    # pycodestyle
     "F",    # pyflakes
