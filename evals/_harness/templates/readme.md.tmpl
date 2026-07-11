@@ -18,7 +18,8 @@ python -m evals.{{NODE_DOTTED}}.{{STRATEGY}}_run          # ad-hoc, prints summa
 python -m evals.{{NODE_DOTTED}}.{{STRATEGY}}_run --gate   # assert thresholds, non-zero on fail
 RUN_EVAL=1 pytest eval_regression -k {{NODE_NAME}}        # via the gate
 ```
-Needs `ANTHROPIC_API_KEY`.
+Needs the API key of whatever model this node calls (usually `ANTHROPIC_API_KEY`; a node on
+another provider needs that provider's key). No Postgres.
 
 ## Adding cases
 Append lines. Cover happy path, edges, negatives, and known confusions. Keep the dataset balanced

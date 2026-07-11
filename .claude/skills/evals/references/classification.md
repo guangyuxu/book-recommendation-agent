@@ -28,6 +28,25 @@ emit several ops). Report, via `evals/_harness/metrics.py`:
 - **Secondary structured fields** get their own accuracy (e.g. `child_resolution` for the resolved
   `target_child_id`), scored only on cases where the answer is unambiguous from the case alone.
 
+## Binary & asymmetric-cost classifiers (e.g. `guard`)
+
+A node with a two-way verdict (safe/unsafe, block/allow, on-topic/off-topic) is just multi-label
+with one label per case — **reuse `label_prf` with single-element sets** (`{"attack"}` /
+`{"benign"}`), no new metric code. Then `set_exact_match` is plain accuracy, and each class's
+`per_label[...].recall` is the number you actually care about. Worked example:
+`evals/agent/guard/`.
+
+The point of a binary eval is usually that **the two errors cost differently**, so do NOT gate on
+aggregate F1 — pull each direction into its own named `summary` metric and gate both:
+- catch rate on the dangerous class (`attack_recall` = `per_label["attack"].recall`) — a miss is a
+  safety hole;
+- pass rate on the safe class (`benign_pass_rate` = `per_label["benign"].recall` = 1 − false-positive
+  rate) — a false block is a UX failure.
+
+Cover the false-positive trap explicitly: a benign case that *looks* dangerous (for `guard`, a
+legit request containing "ignore the rules" as a book theme). Keep both classes supported — with
+the ≤ 3 sample cap, 2 of one class + 1 of the other so neither recall is computed from zero.
+
 ## Coverage — what a good dataset spans
 
 - One clean case per label (happy path).
@@ -43,6 +62,10 @@ emit several ops). Report, via `evals/_harness/metrics.py`:
 - The node under test already runs at temperature 0 (`agent/llm.py`); keep it that way.
 - Wrap the node call in `try/except` in `predict()` and return an `error` marker — one malformed
   structured output is scored as a miss, never a batch-killer. Surface `n_errors` in the summary.
+- **Fail loud when the node isn't actually wired up.** If a missing key/dependency makes the node
+  degrade to a constant answer (e.g. `guard` fails open → always "benign"), the eval must *fail its
+  gate*, not pass green — design the metric so the degenerate output scores 0 (a missing
+  `GROQ_API_KEY` collapses `attack_recall` to 0). A green run must mean the real path ran.
 
 ## Thresholds
 
@@ -54,3 +77,8 @@ emit several ops). Report, via `evals/_harness/metrics.py`:
 - Where a decision is genuinely fuzzy (e.g. `memory_policy` may reasonably add a summary op), keep
   `exact_match` low and lean on `macro_f1`; say so in the readme.
 - Regenerate floors with `python -m eval_regression.produce` rather than hand-tuning by feel.
+- "Start conservative because a small set is noisy" is about *LLM* nodes that sample. A node whose
+  verdict comes from a **deterministic, temperature-0 external classifier** (e.g. `guard`'s Prompt
+  Guard call) is not noisy in that way: if the observed margin is large and stable, strict floors
+  (`attack_recall_min: 1.0`) are appropriate — say so in the readme and revisit only when harder
+  cases land.

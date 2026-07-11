@@ -4,7 +4,8 @@ description: >-
   Rules and workflows for the agent's eval system under evals/ and eval_regression/. Use when
   adding or changing an eval, generating an eval dataset from raw user material, running or gating
   evals, or (re)producing thresholds. Covers the node-first layout, the classify/judge strategies,
-  the module interface, and dataset-generation best practices.
+  the module interface, and dataset-generation best practices. Accepts an optional argument: a
+  node name to scaffold/target, or raw material to turn into a dataset; no arg = general guidance.
 ---
 
 # Evals — rules & workflows
@@ -65,6 +66,13 @@ rubric for judge) from `evals/_harness/templates/`, with the interface pre-fille
 logic left as `NotImplementedError`. Then fill in `predict()`/`generate()`+`render()` following the
 worked examples (`evals/agent/pipeline/understand/`, `evals/agent/capabilities/recommend/`).
 
+The scaffolded dataset row and `classify_thresholds.json` are **`understand`-shaped placeholders**,
+not a generic skeleton. Adapt them to your node: drop case fields the node doesn't read (e.g. a
+message-only node like `guard` needs no `children`/`target_child_id`), and **rename the threshold
+keys to your node's real `summary` metrics** — the template ships `exact_match_min`/`micro_f1_min`,
+and a key that names no emitted metric is a hard failure at gate time (`references missing metric`),
+by design.
+
 ## Workflow 2 — generate a dataset from raw material
 
 The user gives raw utterances/scenarios; you produce ≤ 3 well-formed, spec-labeled cases. Follow
@@ -83,8 +91,10 @@ make eval_node NODE=decide# one node by name
 make eval                 # everything (CI gate)
 RUN_EVAL=1 pytest eval_regression -m judge -k recommend    # pytest by strategy/node
 ```
-Evals are opt-in (`RUN_EVAL=1`; they call the API) and need `ANTHROPIC_API_KEY`. For judge, set
-`EVAL_JUDGE_MODEL` to a stronger, separate model.
+Evals are opt-in (`RUN_EVAL=1`; they call the API) and need **whatever API key the node under
+test calls** — usually `ANTHROPIC_API_KEY`, but a node that uses another provider needs that
+provider's key (e.g. `agent.guard` calls Groq → `GROQ_API_KEY`). State the required key in the
+node's readme. For judge, also set `EVAL_JUDGE_MODEL` to a stronger, separate model.
 
 ## Workflow 4 — gate & produce thresholds
 

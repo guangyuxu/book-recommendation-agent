@@ -1,6 +1,8 @@
 """Main graph: the domain-driven pipeline.
 
-START -> load_context -> understand -> plan -> clarify
+START -> guard -> load_context -> understand -> plan -> clarify
+  guard --blocked--> END                            (prompt-injection input; canned refusal)
+  guard --ok-->      load_context
   clarify --ask_user--> END                       (we asked the user; resume next turn)
   clarify --continue/best_effort--> {execute, memory}   (fan out to two parallel branches)
     execute  -> respond    (answer-generation branch: run the planned capabilities)
@@ -16,6 +18,7 @@ checkpointed, so a resume re-runs only the paused gate node, never `execute`.
 
 from langgraph.graph import END, START, StateGraph
 
+from .guard import guard, route_after_guard
 from .lifecycle import LOAD_CONTEXT_RETRY, load_context
 from .memory import memory_graph
 from .pipeline import (
@@ -32,6 +35,9 @@ from .usage_tracker import with_turn_context
 builder = StateGraph(FlowState, context_schema=AppContext)
 # load_context/plan make no LLM calls, so they are not wrapped. Every LLM-invoking node
 # is wrapped so the billing ContextVar is live when its token-usage callback fires.
+# guard makes a Groq (non-Anthropic) call and runs before turn_id is set, so it is not
+# wrapped with with_turn_context (like load_context/plan, it is not on the Anthropic billing path).
+builder.add_node("guard", guard)
 builder.add_node("load_context", load_context, retry_policy=LOAD_CONTEXT_RETRY)
 builder.add_node("understand", with_turn_context(understand))
 builder.add_node("plan", plan)
@@ -42,7 +48,15 @@ builder.add_node(
 )  # the memory subgraph (its LLM nodes wrap themselves)
 builder.add_node("respond", with_turn_context(respond))
 
-builder.add_edge(START, "load_context")
+builder.add_edge(START, "guard")
+# Entry gate: a prompt-injection input short-circuits to END with a canned refusal (written by
+# guard); anything else proceeds to load_context. Placed before load_context so a blocked turn
+# never touches the DB or an Anthropic model.
+builder.add_conditional_edges(
+    "guard",
+    route_after_guard,
+    {"blocked": END, "ok": "load_context"},
+)
 builder.add_edge("load_context", "understand")
 builder.add_edge("understand", "plan")
 builder.add_edge("plan", "clarify")

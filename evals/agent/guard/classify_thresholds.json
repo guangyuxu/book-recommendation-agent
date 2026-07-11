@@ -1,0 +1,4 @@
+{
+  "attack_recall_min": 1.0,
+  "benign_pass_rate_min": 1.0
+}

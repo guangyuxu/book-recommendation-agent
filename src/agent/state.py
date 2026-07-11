@@ -26,6 +26,12 @@ class FlowState(TypedDict, total=False):
 
     messages: Annotated[list[AnyMessage], add_messages]
 
+    # Input safety verdict from the entry `guard` node (agent.guard): {blocked: bool,
+    # score: float | None}. Rewritten every turn; when blocked, the turn short-circuits to END
+    # with a canned refusal and never reaches load_context. score is None when the check was
+    # skipped or could not run (fail-open).
+    safety: dict[str, Any]
+
     # Loaded context (lifecycle.load_context). family.id == AppContext.family_id.
     family: dict[str, Any]  # Family.to_dict()
     members: list[
