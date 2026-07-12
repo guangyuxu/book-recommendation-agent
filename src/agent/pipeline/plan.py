@@ -1,27 +1,20 @@
-"""Planner Policy: turn the understanding's intents into an ordered, dependency-aware plan.
+"""Planner Policy: turn the understanding's intents into a flat list of capabilities to run.
 
-Deterministic DAG resolver -- no LLM. Each task intent maps to a capability (the turn's
-"goals"); goals are then connected via the registry's produces/required_inputs vocabulary: if
-goal B needs a resource that goal A produces, B depends_on A. Ambient resources (target_child,
-reading_profile, policies, user-named books) come from state and are preconditions, not edges.
-Profile-update / clarify intents map to no capability, so an empty plan is normal.
-
-We only wire edges BETWEEN goals -- a producer is never pulled in just to satisfy an input
-(that would fabricate work the user did not ask for). So e.g. recommend->discussion forms only
-when both intents are present.
+Deterministic -- no LLM. Each task intent maps to a capability (the turn's "goals"). Capabilities
+are independent (none consumes another's output), so the plan is an unordered set with no edges;
+Execute fans them out in parallel. Ambient resources (target_child, reading_profile, policies,
+user-named books) come from state and are checked by clarify, not by the planner. Profile-update /
+clarify intents map to no capability, so an empty plan is normal.
 """
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-from ..capabilities import AMBIENT, REGISTRY, for_intent
+from ..capabilities import AMBIENT, for_intent
 from ..intents import to_intent
 from ..state import FlowState
 from .schemas import Plan, PlanStep
-
-logger = logging.getLogger(__name__)
 
 
 def _goals(intents: list[str]) -> list[str]:
@@ -57,60 +50,9 @@ def ambient_satisfied(resource: str, state: FlowState) -> bool:
     return False
 
 
-def _resolve_edges(goals: list[str], state: FlowState) -> list[tuple[str, str]]:
-    """Producer->consumer edges: a goal input satisfied by another goal's produces.
-
-    A producing goal takes priority over ambient for that resource -- if we are recommending
-    this turn, downstream book-consumers use the recommendations rather than any named book.
-    """
-    producer_of = {
-        resource: cap for cap in goals for resource in REGISTRY[cap].produces
-    }
-    edges: list[tuple[str, str]] = []
-    for cap in goals:
-        spec = REGISTRY[cap]
-        for resource in (*spec.required_inputs, *spec.optional_inputs):
-            producer = producer_of.get(resource)
-            if producer and producer != cap:
-                edges.append((producer, cap))
-    return edges
-
-
-def _topo_order(goals: list[str], edges: list[tuple[str, str]]) -> list[str]:
-    """Kahn topological sort; fall back to goal order if a cycle is detected."""
-    indegree = {g: 0 for g in goals}
-    succ: dict[str, list[str]] = {g: [] for g in goals}
-    for a, b in edges:
-        succ[a].append(b)
-        indegree[b] += 1
-    queue = [g for g in goals if indegree[g] == 0]
-    order: list[str] = []
-    while queue:
-        n = queue.pop(0)
-        order.append(n)
-        for m in succ[n]:
-            indegree[m] -= 1
-            if indegree[m] == 0:
-                queue.append(m)
-    if len(order) < len(goals):
-        logger.warning("plan: dependency cycle among %s; using intent order", goals)
-        return goals
-    return order
-
-
 def plan(state: FlowState) -> dict[str, Any]:
-    """Resolve the understanding's intents into an ordered, dependency-aware capability plan."""
+    """Resolve the understanding's intents into a flat list of capabilities to run."""
     u = state.get("understanding") or {}
     goals = _goals(u.get("intents") or [])
-    if not goals:
-        return {"plan": Plan(steps=[]).model_dump()}
-
-    edges = _resolve_edges(goals, state)
-    order = _topo_order(goals, edges)
-
-    deps_of: dict[str, list[str]] = {g: [] for g in goals}
-    for producer, consumer in edges:
-        deps_of[consumer].append(producer)
-
-    steps = [PlanStep(capability=cap, depends_on=deps_of[cap]) for cap in order]
+    steps = [PlanStep(capability=cap) for cap in goals]
     return {"plan": Plan(steps=steps).model_dump()}

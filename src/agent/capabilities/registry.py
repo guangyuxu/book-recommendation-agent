@@ -1,8 +1,9 @@
-"""Capability Registry: declarative capabilities the Planner sequences and Execute dispatches.
+"""Capability Registry: declarative capabilities the Planner lists and Execute dispatches.
 
-Each Capability declares its triggering intent and required/optional inputs so the planner and
-clarification nodes can reason about it without importing the capability's internals. `run` is
-the LLM-only implementation (no retrieval/ranking in MVP).
+Each Capability declares its triggering intent and required inputs so the planner and
+clarification nodes can reason about it without importing the capability's internals.
+Capabilities are independent (no capability consumes another's output), so Execute fans them out
+in parallel. `run` is the LLM-only implementation (no retrieval/ranking in MVP).
 """
 
 from __future__ import annotations
@@ -17,15 +18,18 @@ from . import compare, content, discussion, evaluate, path, recommend
 
 @dataclass(frozen=True)
 class Capability:
-    """One executable capability and the inputs it needs."""
+    """One executable capability and the inputs it needs.
+
+    `required_inputs` is the only remaining resource vocabulary: the clarify node checks each
+    against state/ambient to decide whether an input is missing. Capabilities are independent --
+    none consumes another's output -- so there is no `produces` and no producer -> consumer edge.
+    """
 
     name: str
     intent: Intent
     description: str
     run: Callable[[dict[str, Any]], dict[str, Any]]
     required_inputs: tuple[str, ...] = ()
-    optional_inputs: tuple[str, ...] = ()
-    produces: tuple[str, ...] = ()
 
 
 REGISTRY: dict[str, Capability] = {
@@ -35,8 +39,6 @@ REGISTRY: dict[str, Capability] = {
         "Recommend a fitted English booklist for the child.",
         recommend.run,
         required_inputs=("target_child",),
-        optional_inputs=("reading_profile", "policies"),
-        produces=("books",),
     ),
     "evaluate": Capability(
         "evaluate",
@@ -44,7 +46,6 @@ REGISTRY: dict[str, Capability] = {
         "Assess whether one named book suits the child.",
         evaluate.run,
         required_inputs=("target_child", "books"),
-        produces=("evaluation",),
     ),
     "compare": Capability(
         "compare",
@@ -52,8 +53,6 @@ REGISTRY: dict[str, Capability] = {
         "Compare two or more named books for the child.",
         compare.run,
         required_inputs=("books",),
-        optional_inputs=("target_child",),
-        produces=("comparison",),
     ),
     "discussion": Capability(
         "discussion",
@@ -61,7 +60,6 @@ REGISTRY: dict[str, Capability] = {
         "Generate post-reading discussion questions.",
         discussion.run,
         required_inputs=("target_child", "books"),
-        produces=("questions",),
     ),
     "path": Capability(
         "path",
@@ -69,27 +67,22 @@ REGISTRY: dict[str, Capability] = {
         "Plan a staged reading path for the child.",
         path.run,
         required_inputs=("target_child", "reading_profile"),
-        optional_inputs=("books",),
-        produces=("reading_path",),
     ),
     "content": Capability(
         "content",
         Intent.CONTENT_CREATION,
         "Draft requested content (article, copy, social post).",
         content.run,
-        optional_inputs=("target_child", "books"),
-        produces=("draft",),
     ),
 }
 
 # Resources that come from context/state (load_context + understand), not from a capability's
-# output. The planner treats these as preconditions checked against state, not as edges. All
-# other resource names in `produces` are derived (they create producer -> consumer edges).
+# output. The clarify node treats these as preconditions checked against state (see
+# ambient_satisfied): a required input already met from ambient does not trigger a question.
 #   target_child      -- resolved via understand/load_context (state["target_child_id"])
 #   reading_profile   -- the child's stored profile (state["children"][id]["reading_profile"])
 #   policies          -- family reading policies (state["policies"])
-#   books             -- books the user named this turn (understanding.mentioned_books);
-#                        ALSO derivable from recommend.produces, so it is dual-source.
+#   books             -- books the user named this turn (understanding.mentioned_books)
 AMBIENT: frozenset[str] = frozenset(
     {"target_child", "reading_profile", "policies", "books"}
 )
