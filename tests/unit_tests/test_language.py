@@ -36,7 +36,9 @@ from agent.pipeline.clarify import _ASK_WHICH_CHILD, clarify
         ("  ZH-hant ", "zh-Hant"),
     ],
 )
-def test_normalize_language_accepts_codes_and_aliases(value: str, expected: str) -> None:
+def test_normalize_language_accepts_codes_and_aliases(
+    value: str, expected: str
+) -> None:
     assert normalize_language(value) == expected
 
 

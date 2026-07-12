@@ -1,30 +1,73 @@
-.PHONY: all format format_diff lint lint_diff \
-	test coverage ci \
-	eval eval_classify eval_judge eval_node eval_produce \
-	spell_check spell_fix init-db \
+# ─────────────────────────────────────────────────────────────────────────────────────
+# VERIFICATION MAP — this Makefile is the single source of truth. ci.yml and
+# .pre-commit-config.yaml only CALL these targets (never restate commands), so no drift.
+#
+#   ci    = lint + audit + coverage    ← GitHub Actions (verbatim) + pre-push hook
+#   check = lint + test                ← everyday local + pre-commit hook
+#   lint  = lint_ruff + lint_format + typecheck + spell_check
+#
+#           lint_ruff .... ruff check          spell_check .. codespell
+#           lint_format .. ruff format --diff   test ......... pytest
+#           typecheck .... mypy                 coverage ..... pytest + coverage report
+#                                               audit ........ pip-audit  (needs network)
+#
+#   fixers (manual):  format = fix formatting + imports    spell_fix = fix spelling
+#
+#   coverage RUNS the full test suite (so `ci` does not skip tests); `check` is fully offline.
+#   Evals are separate (opt-in, cost API tokens) — see the EVALS section.
+# ─────────────────────────────────────────────────────────────────────────────────────
+
+.PHONY: all \
+	lint_ruff lint_format typecheck spell_check audit test coverage \
+	lint check ci format spell_fix \
+	eval eval_classify eval_judge eval_node eval_produce init-db graph \
 	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
 	k8s-status k8s-logs k8s-pf k8s-down help
 
 # Default target executed when no arguments are given to make.
 all: help
 
-test:
+######################
+# CHECKS
+######################
+# Single source of truth for verification. Nothing else restates these commands:
+#   - GitHub Actions (.github/workflows/ci.yml) runs `make ci` verbatim.
+#   - pre-commit (.pre-commit-config.yaml) runs `make check` on commit and `make ci` on push.
+# So local == CI by construction. Evals are excluded (opt-in, cost API tokens -- see EVALS below).
+#
+# Everyday use:  `make check`  (fast, offline: lint + test; lint = ruff + format + mypy + codespell)
+# Before push:   `make ci`     (faithful CI gate: also runs pip-audit + coverage; audit needs net)
+# Tests use sqlite:///:memory: by default; for Postgres set BOOK_AGENT_DATABASE_URL + `make init-db`.
+
+CHECK_PATHS = src/ evals/ eval_regression/ tests/
+
+# -- atomic checks: each is the ONE definition of that check --
+lint_ruff:               ## ruff lint rules (import sorting included via [tool.ruff] lint.select)
+	uv run ruff check $(CHECK_PATHS)
+
+lint_format:             ## fail if any file is unformatted (does NOT modify files; run `make format` to fix)
+	uv run ruff format --diff $(CHECK_PATHS)
+
+typecheck:               ## mypy -- config-driven ([tool.mypy]: strict, files = src/agent)
+	uv run mypy
+
+spell_check:             ## codespell over the repo
+	uv run codespell --skip ./.git --ignore-words .codespellignore .
+
+audit:                   ## dependency vulnerability scan (hits the network)
+	uv run pip-audit
+
+test:                    ## pytest suite
 	uv run pytest tests/
 
-coverage:
+coverage:                ## runs the FULL test suite under coverage + report (this is how `make ci` runs tests)
 	uv run coverage run -m pytest tests/
 	uv run coverage report
 
-# Faithful mirror of .github/workflows/ci.yml -- run this before pushing to catch what CI catches.
-# Same commands, same order: ruff check -> mypy (config-driven) -> codespell -> unit tests.
-# Tests run against sqlite:///:memory: by default (CI uses a Postgres service container).
-# To test against Postgres locally: set BOOK_AGENT_DATABASE_URL, run `make init-db`, then `make ci`.
-ci:
-	uv run ruff check .
-	uv run mypy
-	uv run codespell --skip ./.git --ignore-words .codespellignore README.md
-	uv run codespell --skip ./.git --ignore-words .codespellignore src/
-	uv run pytest tests/
+# -- composites --
+lint: lint_ruff lint_format typecheck spell_check  ## all static checks: ruff + format + mypy + codespell (fast, offline)
+check: lint test                                   ## everyday gate after code changes: lint + tests (offline)
+ci: lint audit coverage                            ## full CI gate: lint + audit + tests(coverage); coverage RUNS the suite
 
 ######################
 # EVALS (LLM output quality; opt-in, calls the Anthropic API)
@@ -49,27 +92,14 @@ eval_produce:            ## Regenerate co-located thresholds (add ARGS='--dry-ru
 
 
 ######################
-# LINTING AND FORMATTING
+# AUTO-FIXERS  (the read-only checks live in the CHECKS section above)
 ######################
 
-LINT_PATHS = src/ evals/ eval_regression/ tests/
-lint_diff format_diff: LINT_PATHS=$(shell git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$')
+format:                  ## auto-fix formatting + import order (the fixer for lint_format)
+	uv run ruff format $(CHECK_PATHS)
+	uv run ruff check --select I --fix $(CHECK_PATHS)
 
-lint lint_diff:
-	uv run ruff check $(LINT_PATHS)
-	[ "$(LINT_PATHS)" = "" ] || uv run ruff format $(LINT_PATHS) --diff
-	[ "$(LINT_PATHS)" = "" ] || uv run ruff check --select I $(LINT_PATHS)
-	# Config-driven: reads [tool.mypy] (strict, files = src/agent).
-	uv run mypy
-
-format format_diff:
-	uv run ruff format $(LINT_PATHS)
-	uv run ruff check --select I --fix $(LINT_PATHS)
-
-spell_check:
-	uv run codespell --skip ./.git --ignore-words .codespellignore .
-
-spell_fix:
+spell_fix:               ## auto-fix spelling across the repo
 	uv run codespell --skip ./.git --ignore-words .codespellignore -w .
 
 ######################
@@ -143,14 +173,16 @@ k8s-down:                ## Delete the entire book-agent namespace (Secret/Deplo
 ######################
 
 help:
-	@echo '----'
-	@echo 'format                       - run code formatters'
-	@echo 'lint                         - run linters on src/ evals/ eval_regression/ tests/ (ruff + mypy)'
+	@echo '--- checks (local == CI; see .github/workflows/ci.yml) ---'
+	@echo 'check                        - everyday gate after code changes: lint + test (offline)'
+	@echo 'ci                           - faithful GitHub CI mirror: lint + audit + coverage'
+	@echo 'lint                         - static checks: ruff check + ruff format --diff + mypy + codespell'
+	@echo 'format                       - auto-fix formatting + import order'
 	@echo 'test                         - run all tests under tests/'
 	@echo 'coverage                     - run tests with a coverage report'
-	@echo 'ci                           - mirror the full GitHub CI pipeline locally (run before pushing)'
-	@echo 'spell_check                  - check spelling in README.md and src/ (same as CI)'
-	@echo 'spell_fix                    - auto-fix spelling in README.md and src/'
+	@echo 'spell_check                  - check spelling across the repo'
+	@echo 'spell_fix                    - auto-fix spelling across the repo'
+	@echo 'audit                        - dependency vulnerability scan (pip-audit; needs network)'
 	@echo 'init-db                      - create schema + tables (idempotent; dev/CI setup)'
 	@echo 'eval                         - gate all node evals (RUN_EVAL=1, needs API key)'
 	@echo 'eval_classify                - gate only classify-strategy nodes'

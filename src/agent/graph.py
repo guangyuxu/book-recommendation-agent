@@ -5,18 +5,15 @@ START -> guard -> load_context -> understand -> plan -> clarify
   guard --ok-->      load_context
   clarify --ask_user--> END                       (we asked the user; resume next turn)
   clarify --continue/best_effort--> {execute, memory}   (fan out to two parallel branches)
-    execute  -> validate -> respond    (answer branch: run capabilities, then gate the output)
+    execute  -> respond                (answer branch: run capabilities)
     memory   -> respond                (memory subgraph: decide -> confirm gate -> single DB write)
   respond -> END
 
-`execute -> validate` and the `memory` subgraph run in PARALLEL and fan in at `respond`; they
-touch disjoint state channels (capability_results/output_checks/validation vs memory_operations/
-confirmation*/members/children), so there is no write conflict. `validate` (see agent.validation)
-is the OUTPUT gate: it runs policy/safety checks on the capability output and writes a rating
-(ALLOW/WARNING/REWRITE/BLOCK) that `respond` acts on -- the output-side analogue of the input
-`guard`. The memory subgraph (see agent.memory) owns the HITL confirmation gate and the only DB
-write; when it pauses on interrupt(), the `execute -> validate` branch has already completed and is
-checkpointed, so a resume re-runs only the paused gate node, never `execute`/`validate`.
+The `execute` and `memory` branches run in PARALLEL and fan in at `respond`; they touch disjoint
+state channels (capability_results vs memory_operations/confirmation*/members/children), so there
+is no write conflict. The memory subgraph (see agent.memory) owns the HITL confirmation gate and
+the only DB write; when it pauses on interrupt(), the `execute` branch has already completed and is
+checkpointed, so a resume re-runs only the paused gate node, never `execute`.
 """
 
 from langgraph.graph import END, START, StateGraph
@@ -34,7 +31,6 @@ from .pipeline import (
 )
 from .state import AppContext, FlowState
 from .usage_tracker import with_turn_context
-from .validation import validation_graph
 
 builder = StateGraph(FlowState, context_schema=AppContext)
 # load_context/plan make no LLM calls, so they are not wrapped. Every LLM-invoking node
@@ -47,9 +43,6 @@ builder.add_node("understand", with_turn_context(understand))
 builder.add_node("plan", plan)
 builder.add_node("clarify", with_turn_context(clarify))
 builder.add_node("execute", with_turn_context(execute))
-builder.add_node(
-    "validate", validation_graph
-)  # the output-validation subgraph (its check nodes are stubs; no LLM today)
 builder.add_node(
     "memory", memory_graph
 )  # the memory subgraph (its LLM nodes wrap themselves)
@@ -73,10 +66,8 @@ builder.add_conditional_edges(
     route_after_clarify,
     {"ask_user": END, "execute": "execute", "memory": "memory"},
 )
-# Answer branch: gate the capability output before it is composed. Memory branch is independent.
-builder.add_edge("execute", "validate")
 # Fan in: both branches join at respond, which composes the single user-facing reply.
-builder.add_edge("validate", "respond")
+builder.add_edge("execute", "respond")
 builder.add_edge("memory", "respond")
 builder.add_edge("respond", END)
 

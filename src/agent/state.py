@@ -14,22 +14,6 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, field_validator
 
 
-def merge_output_checks(
-    existing: list[dict[str, Any]] | None, incoming: list[dict[str, Any]] | None
-) -> list[dict[str, Any]]:
-    """Reducer for `output_checks`: append within a turn, reset when handed an empty list.
-
-    The validation subgraph fans out to parallel check workers that each return a single-element
-    list; those append. Its `select` node returns an empty list to RESET the accumulator at the
-    start of a turn, so a prior turn's results never linger across a checkpointed thread. (A plain
-    add-reducer could not reset; empty-list-means-reset is the one convention the workers never
-    trigger, since a worker always emits exactly one result.)
-    """
-    if not incoming:
-        return []
-    return [*(existing or []), *incoming]
-
-
 class FlowState(TypedDict, total=False):
     """The single graph's state. `total=False` because most channels are filled stage by stage.
 
@@ -96,14 +80,6 @@ class FlowState(TypedDict, total=False):
     # into this turn's render/persist. `execute` is the sole writer.
     capability_results: dict[str, dict[str, Any]]
     memory_operations: list[dict[str, Any]]
-
-    # Output-validation channels (agent.validation subgraph, runs execute -> validate -> respond).
-    # output_checks: transient per-turn accumulator the parallel check workers append to; reset to
-    #   [] by the subgraph's `select` node each turn (see merge_output_checks above).
-    # validation: the aggregated verdict {rating: ALLOW|WARNING|REWRITE|BLOCK, results: [...]},
-    #   last-write-wins, written by `aggregate` and read by `respond`.
-    output_checks: Annotated[list[dict[str, Any]], merge_output_checks]
-    validation: dict[str, Any]
 
     # LangGraph thread_id (from config["configurable"]["thread_id"]); None without checkpointer.
     # Stored in state for observability; the usage_tracker contextvar is the authoritative source.
