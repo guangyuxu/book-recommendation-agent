@@ -14,11 +14,6 @@ log a warning -- rather than block every request behind a third-party dependency
 
 PII: only the single latest user message is sent to Groq -- never child/family profile data.
 Nothing here logs the message text; we log only the derived score and the block decision.
-
-The refusal is localized (English / Simplified / Traditional Chinese) so a blocked non-English
-turn is answered in the parent's language. Because guard runs before `understand`, it picks the
-language with the dependency-free `detect_language` heuristic (agent.language) rather than the
-LLM-inferred `reply_language` the rest of the pipeline uses -- staying pre-LLM and zero-cost.
 """
 
 from __future__ import annotations
@@ -30,7 +25,6 @@ from typing import Any
 
 from langchain.messages import AIMessage, AnyMessage
 
-from .language import Language, detect_language
 from .state import FlowState
 
 logger = logging.getLogger(__name__)
@@ -49,22 +43,12 @@ logger = logging.getLogger(__name__)
 # string-encoded float in [0, 1]: the probability that the input is a prompt attack.
 _MODEL = "meta-llama/llama-prompt-guard-2-86m"
 
-# Canned, non-leaky refusal shown when an input is blocked, per supported reply language. Static
-# (no LLM, no PII, no cost) and deliberately vague about *why* so it does not coach an attacker.
-_REFUSAL: dict[Language, str] = {
-    "en": (
-        "Sorry, I can't help with that request. I'm here to help you find great books for your "
-        "child -- try asking me for a recommendation, or about a specific book."
-    ),
-    "zh-Hans": (
-        "抱歉，我无法帮忙处理这个请求。我可以帮你为孩子挑选好书——欢迎让我推荐，"
-        "或询问某一本具体的书。"
-    ),
-    "zh-Hant": (
-        "抱歉，我無法幫忙處理這個請求。我可以幫你為孩子挑選好書——歡迎讓我推薦，"
-        "或詢問某一本特定的書。"
-    ),
-}
+# Canned, non-leaky refusal shown when an input is blocked. Static (no LLM, no PII, no cost)
+# and deliberately vague about *why* so it does not coach an attacker.
+_REFUSAL = (
+    "Sorry, I can't help with that request. I'm here to help you find great books for your "
+    "child -- try asking me for a recommendation, or about a specific book."
+)
 
 
 def _threshold() -> float:
@@ -175,7 +159,7 @@ def guard(state: FlowState) -> dict[str, Any]:
     if blocked:
         return {
             "safety": {"blocked": True, "score": score},
-            "messages": [AIMessage(content=_REFUSAL[detect_language(text)])],
+            "messages": [AIMessage(content=_REFUSAL)],
         }
     return {"safety": {"blocked": False, "score": score}}
 

@@ -13,7 +13,6 @@ from typing import Any, cast
 from langchain.messages import SystemMessage
 
 from ..intents import intent_menu
-from ..language import normalize_language
 from ..llm import STANDARD
 from ..state import FlowState
 from .schemas import Understanding
@@ -138,9 +137,6 @@ def understand(state: FlowState) -> dict[str, Any]:
     return {
         "understanding": u,
         "target_child_id": target_id,
-        # Normalized so an unexpected LLM code (e.g. "zh-TW") maps to a supported value; the
-        # downstream LLM nodes (clarify, respond) read this to reply in the parent's language.
-        "reply_language": normalize_language(understanding.reply_language),
         # Always written (even when {}) so a switch from an earlier turn never lingers.
         "child_switch": switch_signal(
             understanding.child_ref.status,
