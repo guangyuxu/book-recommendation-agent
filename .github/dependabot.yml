@@ -1,7 +1,8 @@
 version: 2
 updates:
-  # Python dependencies (uv / pyproject.toml)
-  - package-ecosystem: pip
+  # Python dependencies. Use the native "uv" ecosystem (GA since 2025-03) so Dependabot updates
+  # BOTH pyproject.toml and uv.lock in sync; the "pip" ecosystem leaves uv.lock stale.
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly

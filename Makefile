@@ -2,18 +2,18 @@
 # VERIFICATION MAP — this Makefile is the single source of truth. ci.yml and
 # .pre-commit-config.yaml only CALL these targets (never restate commands), so no drift.
 #
-#   ci    = lint + audit + coverage    ← GitHub Actions (verbatim) + pre-push hook
+#   ci    = lint + coverage            ← GitHub Actions (verbatim) + pre-push hook
 #   check = lint + test                ← everyday local + pre-commit hook
 #   lint  = lint_ruff + lint_format + typecheck + spell_check
 #
 #           lint_ruff .... ruff check          spell_check .. codespell
 #           lint_format .. ruff format --diff   test ......... pytest
 #           typecheck .... mypy                 coverage ..... pytest + coverage report
-#                                               audit ........ pip-audit  (needs network)
-#
-#   fixers (manual):  format = fix formatting + imports    spell_fix = fix spelling
 #
 #   coverage RUNS the full test suite (so `ci` does not skip tests); `check` is fully offline.
+#   audit (pip-audit) is NOT in ci/check — it needs the network, so it runs on a schedule
+#     (.github/workflows/audit.yml); run it by hand with `make audit`.
+#   fixers (manual):  format = fix formatting + imports    spell_fix = fix spelling
 #   Evals are separate (opt-in, cost API tokens) — see the EVALS section.
 # ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ all: help
 # So local == CI by construction. Evals are excluded (opt-in, cost API tokens -- see EVALS below).
 #
 # Everyday use:  `make check`  (fast, offline: lint + test; lint = ruff + format + mypy + codespell)
-# Before push:   `make ci`     (faithful CI gate: also runs pip-audit + coverage; audit needs net)
+# Before push:   `make ci`     (what GitHub Actions runs verbatim: lint + coverage; fully offline)
 # Tests use sqlite:///:memory: by default; for Postgres set BOOK_AGENT_DATABASE_URL + `make init-db`.
 
 CHECK_PATHS = src/ evals/ eval_regression/ tests/
@@ -67,7 +67,9 @@ coverage:                ## runs the FULL test suite under coverage + report (th
 # -- composites --
 lint: lint_ruff lint_format typecheck spell_check  ## all static checks: ruff + format + mypy + codespell (fast, offline)
 check: lint test                                   ## everyday gate after code changes: lint + tests (offline)
-ci: lint audit coverage                            ## full CI gate: lint + audit + tests(coverage); coverage RUNS the suite
+ci: lint coverage                                  ## code gate CI runs verbatim: lint + tests(coverage); coverage RUNS the suite
+# `audit` is intentionally NOT in `ci`: it needs the network, so it runs on a schedule
+# (.github/workflows/audit.yml), not on the per-push/PR blocking path. Run it locally with `make audit`.
 
 ######################
 # EVALS (LLM output quality; opt-in, calls the Anthropic API)
@@ -175,7 +177,7 @@ k8s-down:                ## Delete the entire book-agent namespace (Secret/Deplo
 help:
 	@echo '--- checks (local == CI; see .github/workflows/ci.yml) ---'
 	@echo 'check                        - everyday gate after code changes: lint + test (offline)'
-	@echo 'ci                           - faithful GitHub CI mirror: lint + audit + coverage'
+	@echo 'ci                           - faithful GitHub CI mirror: lint + coverage (offline)'
 	@echo 'lint                         - static checks: ruff check + ruff format --diff + mypy + codespell'
 	@echo 'format                       - auto-fix formatting + import order'
 	@echo 'test                         - run all tests under tests/'

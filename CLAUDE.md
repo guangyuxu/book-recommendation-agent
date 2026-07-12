@@ -56,12 +56,16 @@ as done. Do NOT report a task as complete while any check fails.
 make check   # lint (ruff check + ruff format --diff + mypy + codespell) + test — fast, offline
 ```
 
-Before pushing, run the full CI mirror (also runs the dependency audit + coverage):
+Before pushing, run the full CI mirror (lint + tests under coverage, with a `fail_under` floor):
 
 ```bash
-make ci      # what GitHub Actions runs verbatim: lint + audit + coverage
+make ci      # what GitHub Actions runs verbatim: lint + coverage (offline)
 ```
 
 If `make check` reports formatting diffs, run `make format` to auto-fix them. Optional: install
-the local hooks once with `uv run pre-commit install` (runs `make check` on commit, `make ci` on
-push). Focused subsets while iterating: `make lint`, `make test`, `make spell_check`, `make audit`.
+the local hooks once with `uv run pre-commit install` (runs `make check` + gitleaks on commit,
+`make ci` on push). Focused subsets while iterating: `make lint`, `make test`, `make spell_check`.
+
+Security tooling (does not block the code gate): ruff's `S` (flake8-bandit) rules run inside
+`lint`; `make audit` (pip-audit) runs on a schedule (`.github/workflows/audit.yml`); gitleaks
+scans for secrets in pre-commit and in CI; Dependabot opens dependency-update PRs.

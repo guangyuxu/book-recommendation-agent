@@ -1,10 +1,13 @@
-# CI: two parallel jobs.
-#   checks  — runs `make ci` (lint + spell_check + audit + coverage): the SAME command you run
-#             locally, the single ground truth. Only infrastructure that make cannot own lives
-#             here (Postgres service, DB init, uv/cache setup, coverage-artifact upload); every
-#             actual check lives in the Makefile CHECKS section, so CI and local cannot drift.
+# CI: three parallel jobs.
+#   checks  — runs `make ci` (lint + coverage): the SAME command you run locally, the single
+#             ground truth. Only infrastructure that make cannot own lives here (Postgres service,
+#             DB init, uv/cache setup, coverage-artifact upload); every actual check lives in the
+#             Makefile CHECKS section, so CI and local cannot drift.
 #   docker  — image build check.
-# Runs inside a Python 3.13 container for sandbox isolation.
+#   secrets — gitleaks secret scan (server-side backstop for the pre-commit hook).
+# checks/docker run inside a Python 3.13 container for sandbox isolation.
+# Dependency auditing (pip-audit) is deliberately elsewhere (scheduled audit.yml) so a network /
+# advisory hiccup never blocks a code PR.
 
 name: CI
 
@@ -98,3 +101,19 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t book-recommendation-agent:${{ steps.tag.outputs.tag }} .
+
+  # ── 3. Secret scan ───────────────────────────────────────────────────────────
+  # Server-side backstop for the gitleaks pre-commit hook: catches secrets even if a contributor
+  # never ran `pre-commit install`. fetch-depth: 0 so it scans full history on push.
+  # NOTE: gitleaks-action is free for public repos; a private org needs GITLEAKS_LICENSE in env.
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
