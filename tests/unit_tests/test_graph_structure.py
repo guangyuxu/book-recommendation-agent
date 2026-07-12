@@ -21,6 +21,8 @@ from langgraph.types import Command, interrupt
 from agent.graph import graph
 from agent.memory import memory_graph
 from agent.pipeline import route_after_clarify
+from agent.validation import validation_graph
+from agent.validation.checks import CHECK_REGISTRY, node_name
 
 # import_module returns the real submodule (the package re-exports `execute` the function under
 # the same name, which would otherwise shadow it), so monkeypatching its REGISTRY works.
@@ -46,9 +48,30 @@ def test_clarify_fans_out_to_both_branches() -> None:
 
 def test_both_branches_join_at_respond() -> None:
     edges = _edges(graph)
-    assert ("execute", "respond") in edges
+    # The answer branch now gates the output: execute -> validate -> respond (not execute ->
+    # respond directly). The memory branch still joins respond in parallel.
+    assert ("execute", "validate") in edges
+    assert ("validate", "respond") in edges
     assert ("memory", "respond") in edges
     assert ("respond", "__end__") in edges
+    assert ("execute", "respond") not in edges  # replaced by the validate hop
+    assert "validate" in _nodes(graph)
+
+
+# --- validation subgraph shape ----------------------------------------------------------
+
+
+def test_validation_subgraph_fans_out_to_checks_and_aggregates() -> None:
+    edges = _edges(validation_graph)
+    nodes = _nodes(validation_graph)
+    assert ("__start__", "select") in edges
+    assert ("aggregate", "__end__") in edges
+    # Every registered check is its own node, fanned out from select and joined at aggregate.
+    for check in CHECK_REGISTRY.values():
+        name = node_name(check)
+        assert name in nodes
+        assert ("select", name) in edges
+        assert (name, "aggregate") in edges
 
 
 def test_old_serial_confirm_nodes_are_gone_from_main_graph() -> None:

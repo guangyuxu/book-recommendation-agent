@@ -12,6 +12,7 @@ from typing import Any, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
 from ..capabilities import REGISTRY, required_inputs
+from ..language import Language, normalize_language, reply_directive
 from ..llm import FAST
 from ..state import FlowState
 from .plan import ambient_satisfied
@@ -19,13 +20,24 @@ from .schemas import ClarificationDecision
 
 _structured = FAST.structured(ClarificationDecision)
 
+# Localized deterministic questions (the LLM-generated question is produced in-language via
+# reply_directive; these two are hardcoded paths that never touch the LLM).
+_ASK_WHICH_CHILD: dict[Language, str] = {
+    "en": "Which child is this for?",
+    "zh-Hans": "这是为哪个孩子问的呢？",
+    "zh-Hant": "這是為哪個孩子問的呢？",
+}
+_ASK_MORE: dict[Language, str] = {
+    "en": "Could you tell me a bit more?",
+    "zh-Hans": "可以再多告诉我一些吗？",
+    "zh-Hant": "可以再多告訴我一些嗎？",
+}
 
-def _ask(decision: ClarificationDecision) -> dict[str, Any]:
+
+def _ask(decision: ClarificationDecision, lang: Language) -> dict[str, Any]:
     return {
         "clarification": decision.model_dump(),
-        "messages": [
-            AIMessage(content=decision.question or "Could you tell me a bit more?")
-        ],
+        "messages": [AIMessage(content=decision.question or _ASK_MORE[lang])],
     }
 
 
@@ -34,6 +46,7 @@ def clarify(state: FlowState) -> dict[str, Any]:
     u = state.get("understanding") or {}
     plan = state.get("plan") or {}
     steps = plan.get("steps") or []
+    lang = normalize_language(state.get("reply_language"))
 
     # Deterministic: a needed-but-unknown child always requires asking.
     if u.get("child_ambiguous"):
@@ -41,8 +54,9 @@ def clarify(state: FlowState) -> dict[str, Any]:
             ClarificationDecision(
                 decision="ask_user",
                 missing_inputs=["target_child"],
-                question="Which child is this for?",
-            )
+                question=_ASK_WHICH_CHILD[lang],
+            ),
+            lang,
         )
 
     # Only genuinely-unmet required inputs: drop those an in-plan step produces (a dependency
@@ -65,7 +79,7 @@ def clarify(state: FlowState) -> dict[str, Any]:
             "with stated assumptions). Prefer continue or best_effort; only ask_user when a "
             "genuinely required input (e.g. a specific book title for evaluate/compare/"
             "discussion) is absent and cannot be reasonably assumed. If you ask_user, write a "
-            "single concise question."
+            "single concise question." + reply_directive(lang)
         )
     )
     human = HumanMessage(
@@ -80,7 +94,7 @@ def clarify(state: FlowState) -> dict[str, Any]:
         ClarificationDecision, _structured.invoke([system, human, *state["messages"]])
     )
     if result.decision == "ask_user":
-        return _ask(result)
+        return _ask(result, lang)
     return {"clarification": result.model_dump()}
 
 

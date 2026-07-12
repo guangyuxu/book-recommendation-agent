@@ -18,10 +18,29 @@ from ..domain import (
     domain_session,
     save_recommendation_items,
 )
+from ..language import Language, normalize_language, reply_directive
 from ..llm import STANDARD
 from ..state import FlowState
 
 logger = logging.getLogger(__name__)
+
+# Localized, non-leaky reply used when the output-validation subgraph returns BLOCK: the composed
+# answer is withheld and never persisted. Deliberately vague about *why* (does not coach), and
+# static (no LLM) so a blocked turn costs nothing to answer.
+_BLOCKED_REPLY: dict[Language, str] = {
+    "en": (
+        "Sorry, I wasn't able to put together a response I'm comfortable sharing for that. Please "
+        "try rephrasing, or ask me for a book recommendation for your child."
+    ),
+    "zh-Hans": (
+        "抱歉，这个请求我暂时无法给出可以放心分享的回复。请换个说法再试，"
+        "或让我为你的孩子推荐一本书。"
+    ),
+    "zh-Hant": (
+        "抱歉，這個請求我暫時無法給出可以放心分享的回覆。請換個說法再試，"
+        "或讓我為你的孩子推薦一本書。"
+    ),
+}
 
 
 def _last_human_text(messages: list[Any]) -> str:
@@ -114,6 +133,38 @@ def _confirmation_note(state: FlowState) -> str:
     return ""
 
 
+def _validation_note(state: FlowState) -> str:
+    """Return a compose-time constraint reflecting a WARNING/REWRITE output-validation verdict.
+
+    ALLOW / absent contribute nothing (no constraint needed); BLOCK never reaches here (respond
+    short-circuits to a canned reply before composing). For WARNING/REWRITE we surface the flagged
+    checks' reasons so the composed reply addresses them.
+    """
+    validation = state.get("validation") or {}
+    rating = validation.get("rating")
+    if rating not in ("WARNING", "REWRITE"):
+        return ""
+    flagged = [
+        r
+        for r in validation.get("results") or []
+        if r.get("outcome") not in (None, "pass") and r.get("reason")
+    ]
+    reasons = (
+        "; ".join(f"{r.get('check')}: {r.get('reason')}" for r in flagged)
+        or "policy/safety concerns were raised"
+    )
+    if rating == "REWRITE":
+        return (
+            f"\n\nIMPORTANT: an automated review flagged issues with the prepared material "
+            f"({reasons}). Revise your reply to fix them -- omit or correct the flagged content "
+            "and do not repeat the problem."
+        )
+    return (
+        f"\n\nNote: an automated review raised concerns ({reasons}). Keep your reply helpful but "
+        "briefly and appropriately caveat the affected part."
+    )
+
+
 def _compose(state: FlowState, rendered: str) -> str:
     system = SystemMessage(
         content=(
@@ -124,6 +175,8 @@ def _compose(state: FlowState, rendered: str) -> str:
             f"Prepared material:\n{rendered or '(none)'}"
             f"{_switch_note(state)}"
             f"{_confirmation_note(state)}"
+            f"{_validation_note(state)}"
+            f"{reply_directive(state.get('reply_language'))}"
         )
     )
     reply = STANDARD.chain().invoke([system, *state["messages"]])
@@ -168,7 +221,18 @@ def _persist_recommendation(
 
 
 def respond(state: FlowState) -> dict[str, Any]:
-    """Compose the user-facing reply; persist the turn if it produced a recommendation."""
+    """Compose the user-facing reply; persist the turn if it produced a recommendation.
+
+    Honors the output-validation rating (agent.validation): BLOCK withholds the answer with a
+    canned reply and persists nothing; WARNING/REWRITE constrain composition (see _validation_note);
+    ALLOW / absent compose normally.
+    """
+    rating = (state.get("validation") or {}).get("rating")
+    if rating == "BLOCK":
+        lang = normalize_language(state.get("reply_language"))
+        logger.info("respond: output blocked by validation; returning canned reply.")
+        return {"messages": [AIMessage(content=_BLOCKED_REPLY[lang])]}
+
     results = state.get("capability_results") or {}
     rendered = _render_outputs(results)
     reply_text = _compose(state, rendered)
