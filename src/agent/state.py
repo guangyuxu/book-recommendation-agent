@@ -47,6 +47,12 @@ class FlowState(TypedDict, total=False):
     # resolved by the understand node.
     target_child_id: str | None
 
+    # Reply language for this turn, inferred by `understand` from the parent's latest message
+    # ("en" | "zh-Hans" | "zh-Hant"; default "en"). The downstream LLM nodes (clarify, respond)
+    # read it via agent.language.reply_directive to answer in the parent's language. The guard
+    # entry node localizes its own refusal independently (it runs before understand).
+    reply_language: str
+
     # A focus switch detected this turn (point 2): the message clearly pointed at a different
     # child than the pinned one, so target_child_id moved. {from, to, from_name, to_name} for
     # the frontend to swap the avatar (and offer an undo); {} when no switch happened this turn.

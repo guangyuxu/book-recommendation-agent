@@ -18,6 +18,7 @@ from ..domain import (
     domain_session,
     save_recommendation_items,
 )
+from ..language import reply_directive
 from ..llm import STANDARD
 from ..state import FlowState
 
@@ -124,6 +125,7 @@ def _compose(state: FlowState, rendered: str) -> str:
             f"Prepared material:\n{rendered or '(none)'}"
             f"{_switch_note(state)}"
             f"{_confirmation_note(state)}"
+            f"{reply_directive(state.get('reply_language'))}"
         )
     )
     reply = STANDARD.chain().invoke([system, *state["messages"]])

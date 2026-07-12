@@ -92,6 +92,15 @@ class Understanding(BaseModel):
     child_ref: ChildRef = Field(default_factory=ChildRef)
     mentioned_books: list[MentionedBook] = Field(default_factory=list)
     user_signals: list[UserSignal] = Field(default_factory=list)
+    reply_language: str = Field(
+        default="en",
+        description=(
+            "Language to REPLY in, inferred from the parent's LATEST message: 'en' (English), "
+            "'zh-Hans' (Simplified Chinese), or 'zh-Hant' (Traditional Chinese). Judge by the "
+            "script the parent actually wrote in; default 'en' when the message is empty or the "
+            "language is unclear."
+        ),
+    )
 
     @field_validator("intents", "mentioned_books", mode="before")
     @classmethod
