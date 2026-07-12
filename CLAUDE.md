@@ -41,3 +41,27 @@ level). Treat all child/family data as high-sensitivity PII.
   under family A, query with family B's id, assert empty result.
 - Prompt-injection scenarios for any new LLM node that takes user input: verify that an
   off-roster or malformed LLM output is rejected by the post-LLM gating logic.
+
+## Build & verification
+
+The Makefile `CHECKS` section is the single source of truth for verification. Nothing restates
+those commands: GitHub Actions (`.github/workflows/ci.yml`) runs `make ci` verbatim, and the
+pre-commit hooks (`.pre-commit-config.yaml`) run `make check` on commit and `make ci` on push. So
+local and CI cannot drift. Evals are excluded (opt-in, cost API tokens).
+
+After every code change, run the everyday gate and make sure it is green before treating the work
+as done. Do NOT report a task as complete while any check fails.
+
+```bash
+make check   # lint (ruff check + ruff format --diff + mypy + codespell) + test — fast, offline
+```
+
+Before pushing, run the full CI mirror (also runs the dependency audit + coverage):
+
+```bash
+make ci      # what GitHub Actions runs verbatim: lint + audit + coverage
+```
+
+If `make check` reports formatting diffs, run `make format` to auto-fix them. Optional: install
+the local hooks once with `uv run pre-commit install` (runs `make check` on commit, `make ci` on
+push). Focused subsets while iterating: `make lint`, `make test`, `make spell_check`, `make audit`.

@@ -1,0 +1,33 @@
+# Local git hooks. Each hook is a SINGLE make target — no tool commands are re-declared here, so
+# the Makefile CHECKS section stays the one source of truth (versions from uv.lock, config from
+# pyproject.toml) and these hooks cannot drift from CI.
+#
+# Two stages, matched to what each can afford to spend:
+#   pre-commit (every commit) -> `make check`  — offline full gate: lint + test (tests run too).
+#   pre-push   (before push)  -> `make ci`     — also runs the network audit + coverage.
+# `make ci` is deliberately NOT on every commit: it runs pip-audit (network), which is
+# offline-hostile per commit and would just get bypassed with --no-verify.
+#
+# One-time setup (installs BOTH hook types thanks to default_install_hook_types):
+#   uv run pre-commit install
+# Run manually: `uv run pre-commit run --all-files` (check) / add `--hook-stage pre-push` for `make ci`.
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: local
+    hooks:
+      - id: make-check
+        name: make check (lint + test)
+        entry: make check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: make-ci
+        name: make ci (lint + audit + tests-with-coverage)
+        entry: make ci
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
