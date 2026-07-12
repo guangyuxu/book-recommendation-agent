@@ -85,8 +85,12 @@ def _capability_node(name: str) -> Callable[[ExecuteState], dict[str, Any]]:
     """
 
     def node(state: ExecuteState) -> dict[str, Any]:
+        # graph-backed capabilities are wired as their own node, not here.
+        run = REGISTRY[name].run
+        if run is None:
+            return {}
         try:
-            result = REGISTRY[name].run(dict(state))
+            result = run(dict(state))
         except Exception as exc:  # one capability failing must not sink the turn
             logger.warning(
                 "execute: capability %s failed: %s", name, type(exc).__name__
@@ -112,10 +116,18 @@ def aggregate(state: ExecuteState) -> dict[str, Any]:
 
 _builder = StateGraph(ExecuteState, context_schema=AppContext)
 _builder.add_node("dispatch", dispatch)
-# Each capability transitively invokes an LLM (capability.run), so it wraps itself -- like the
-# memory subgraph's LLM nodes -- rather than relying on a wrapper on the parent "execute" node.
-for _name in REGISTRY:
-    _builder.add_node(_name, with_turn_context(_capability_node(_name)))
+# One node per capability, dispatched the way the capability declares (registry.Capability):
+#   - graph-backed (e.g. recommend's generate/validate self-critique subgraph): wired in directly
+#     as a nested node. Its own LLM nodes wrap themselves, and it appends {name: result} to the
+#     `results` fan-in channel itself.
+#   - run-backed: wrapped in _capability_node, which wraps itself with with_turn_context (like the
+#     memory subgraph's LLM nodes) so its transitive LLM call is billed to the turn.
+# Either way the node lands its contribution in `results`, so aggregate treats them identically.
+for _name, _cap in REGISTRY.items():
+    if _cap.graph is not None:
+        _builder.add_node(_name, _cap.graph)
+    else:
+        _builder.add_node(_name, with_turn_context(_capability_node(_name)))
 _builder.add_node("aggregate", aggregate)
 
 _builder.add_edge(START, "dispatch")

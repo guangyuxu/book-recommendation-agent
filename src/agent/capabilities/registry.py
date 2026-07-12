@@ -23,13 +23,21 @@ class Capability:
     `required_inputs` is the only remaining resource vocabulary: the clarify node checks each
     against state/ambient to decide whether an input is missing. Capabilities are independent --
     none consumes another's output -- so there is no `produces` and no producer -> consumer edge.
+
+    A capability is executed one of two ways, and declares which here:
+      - `run`: a single-shot LLM function (state -> result dict). Execute wraps it in a node.
+      - `graph`: a compiled LangGraph subgraph wired in directly as its own node (e.g. recommend's
+        generate/validate self-critique loop). It appends {name: result} to execute's `results`
+        fan-in channel itself, the same contribution shape `run` capabilities produce.
+    Exactly one of the two is set.
     """
 
     name: str
     intent: Intent
     description: str
-    run: Callable[[dict[str, Any]], dict[str, Any]]
+    run: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     required_inputs: tuple[str, ...] = ()
+    graph: Any = None
 
 
 REGISTRY: dict[str, Capability] = {
@@ -37,15 +45,15 @@ REGISTRY: dict[str, Capability] = {
         "recommend",
         Intent.BOOK_RECOMMENDATION,
         "Recommend a fitted English booklist for the child.",
-        recommend.run,
         required_inputs=("target_child",),
+        graph=recommend.recommend_graph,
     ),
     "evaluate": Capability(
         "evaluate",
         Intent.BOOK_EVALUATION,
         "Assess whether one named book suits the child.",
-        evaluate.run,
         required_inputs=("target_child", "books"),
+        graph=evaluate.evaluate_subgraph,
     ),
     "compare": Capability(
         "compare",

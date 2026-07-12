@@ -124,37 +124,37 @@ def test_execute_subgraph_shape() -> None:
 
 
 def test_execute_skips_failing_capability_and_keeps_the_rest(monkeypatch) -> None:
+    # `recommend` and `evaluate` run as their own subgraph nodes (not _capability_node), so this
+    # generic resilience test uses two run-backed capabilities instead.
     calls: list[str] = []
 
     def good_run(view: dict) -> dict:
-        calls.append("recommend")
-        return {"books": [{"title": "Where the Wild Things Are"}]}
+        calls.append("content")
+        return {"draft": "a lovely post"}
 
     def bad_run(view: dict) -> dict:
         raise RuntimeError("boom")
 
     fake_registry = {
-        "recommend": SimpleNamespace(name="recommend", run=good_run),
-        "evaluate": SimpleNamespace(name="evaluate", run=bad_run),
+        "content": SimpleNamespace(name="content", run=good_run),
+        "compare": SimpleNamespace(name="compare", run=bad_run),
     }
     monkeypatch.setattr(execute_mod, "REGISTRY", fake_registry)
 
     out = _run_execute(
-        {"plan": {"steps": [{"capability": "recommend"}, {"capability": "evaluate"}]}}
+        {"plan": {"steps": [{"capability": "content"}, {"capability": "compare"}]}}
     )
 
-    assert out["capability_results"]["recommend"]["books"][0]["title"].startswith(
-        "Where"
-    )
-    assert "evaluate" not in out["capability_results"]  # failed step produced no result
-    assert calls == ["recommend"]
+    assert out["capability_results"]["content"]["draft"] == "a lovely post"
+    assert "compare" not in out["capability_results"]  # failed step produced no result
+    assert calls == ["content"]
 
 
 def test_execute_runs_independent_capabilities_in_parallel(monkeypatch) -> None:
     # Two independent capabilities both run and both land in capability_results -- no ordering,
     # no dependency (the decoupling this refactor introduced).
-    def rec_run(view: dict) -> dict:
-        return {"books": [{"title": "Frog and Toad"}]}
+    def compare_run(view: dict) -> dict:
+        return {"comparison": "book A edges out book B"}
 
     def content_run(view: dict) -> dict:
         return {"draft": "a lovely post"}
@@ -163,14 +163,14 @@ def test_execute_runs_independent_capabilities_in_parallel(monkeypatch) -> None:
         execute_mod,
         "REGISTRY",
         {
-            "recommend": SimpleNamespace(name="recommend", run=rec_run),
+            "compare": SimpleNamespace(name="compare", run=compare_run),
             "content": SimpleNamespace(name="content", run=content_run),
         },
     )
     out = _run_execute(
-        {"plan": {"steps": [{"capability": "recommend"}, {"capability": "content"}]}}
+        {"plan": {"steps": [{"capability": "compare"}, {"capability": "content"}]}}
     )
-    assert set(out["capability_results"]) == {"recommend", "content"}
+    assert set(out["capability_results"]) == {"compare", "content"}
     assert out["capability_results"]["content"]["draft"] == "a lovely post"
 
 
@@ -188,7 +188,9 @@ def test_execute_scratch_does_not_leak_across_turns(monkeypatch) -> None:
         execute_mod,
         "REGISTRY",
         {
-            "recommend": SimpleNamespace(name="recommend", run=lambda v: {"books": []}),
+            "compare": SimpleNamespace(
+                name="compare", run=lambda v: {"comparison": ""}
+            ),
             "content": SimpleNamespace(name="content", run=lambda v: {"draft": "x"}),
         },
     )
@@ -204,10 +206,10 @@ def test_execute_scratch_does_not_leak_across_turns(monkeypatch) -> None:
     parent = pb.compile(checkpointer=MemorySaver())
 
     cfg = {"configurable": {"thread_id": "t-exec"}}
-    first = parent.invoke({"plan": {"steps": [{"capability": "recommend"}]}}, cfg)
+    first = parent.invoke({"plan": {"steps": [{"capability": "compare"}]}}, cfg)
     second = parent.invoke({"plan": {"steps": [{"capability": "content"}]}}, cfg)
 
-    assert set(first["capability_results"]) == {"recommend"}
+    assert set(first["capability_results"]) == {"compare"}
     assert set(second["capability_results"]) == {"content"}  # turn 1 did not leak in
 
 
