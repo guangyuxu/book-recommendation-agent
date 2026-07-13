@@ -157,15 +157,14 @@ class Understanding(BaseModel):
 
 
 class PlanStep(BaseModel):
-    """One capability to run, with any capabilities it depends on first."""
+    """One capability to run this turn. Capabilities are independent, so steps are unordered."""
 
     capability: str  # must be a name registered in capabilities.registry
-    depends_on: list[str] = Field(default_factory=list)
     reason: str = ""
 
 
 class Plan(BaseModel):
-    """Ordered capabilities to execute this turn (MVP: at most two; may be empty)."""
+    """Capabilities to execute this turn (Execute fans them out in parallel; may be empty)."""
 
     steps: list[PlanStep] = Field(default_factory=list)
 

@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 
-from ..capabilities import REGISTRY, required_inputs
+from ..capabilities import required_inputs
 from ..language import Language, normalize_language, reply_directive
 from ..llm import FAST
 from ..state import FlowState
@@ -59,15 +59,13 @@ def clarify(state: FlowState) -> dict[str, Any]:
             lang,
         )
 
-    # Only genuinely-unmet required inputs: drop those an in-plan step produces (a dependency
-    # will supply them) and those already satisfiable from state (ambient).
-    produced = {r for s in steps for r in REGISTRY[s["capability"]].produces}
+    # Only genuinely-unmet required inputs: keep those not already satisfiable from state (ambient).
     needs = sorted(
         {
             inp
             for s in steps
             for inp in required_inputs(s["capability"])
-            if inp not in produced and not ambient_satisfied(inp, state)
+            if not ambient_satisfied(inp, state)
         }
     )
     has_child = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))

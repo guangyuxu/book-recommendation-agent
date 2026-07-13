@@ -80,44 +80,6 @@ def mentioned_books(state: dict[str, Any]) -> list[dict[str, Any]]:
     return (state.get("understanding") or {}).get("mentioned_books") or []
 
 
-def _render_dep_result(name: str, result: dict[str, Any]) -> str:
-    """Render one dependency's output as a prompt line (books structured, prose verbatim)."""
-    books = result.get("books")
-    if isinstance(books, list) and books:
-        titles = ", ".join(
-            (b.get("title") or "") + (f" by {b['author']}" if b.get("author") else "")
-            for b in books
-            if isinstance(b, dict) and b.get("title")
-        )
-        note = result.get("note")
-        return f"- {name} recommended: {titles}" + (f" ({note})" if note else "")
-    for value in result.values():  # prose capabilities carry a single string
-        if isinstance(value, str) and value.strip():
-            return f"- {name}:\n{value}"
-    return ""
-
-
-def upstream_brief(state: dict[str, Any]) -> str:
-    """Render the current step's dependency outputs as a prompt block, or "" if none.
-
-    execute injects `_current_step` (with its depends_on); we pull those producers' results from
-    capability_results so a consumer capability actually sees what upstream produced this turn.
-    """
-    deps = (state.get("_current_step") or {}).get("depends_on") or []
-    results = state.get("capability_results") or {}
-    parts: list[str] = []
-    for dep in deps:
-        result = results.get(dep)
-        if not isinstance(result, dict):
-            continue
-        rendered = _render_dep_result(dep, result)
-        if rendered:
-            parts.append(rendered)
-    if not parts:
-        return ""
-    return "From earlier steps this turn:\n" + "\n\n".join(parts)
-
-
 def run_text(
     state: dict[str, Any],
     instructions: str,
@@ -136,8 +98,6 @@ def run_text(
         f"Target child profile:\n{child_brief(state)}",
         f"Family reading policies:\n{policies_brief(state)}",
     ]
-    if upstream := upstream_brief(state):
-        blocks.append(upstream)
     reply = _strategy.chain().invoke(
         [SystemMessage(content="\n\n".join(blocks)), *state["messages"]]
     )

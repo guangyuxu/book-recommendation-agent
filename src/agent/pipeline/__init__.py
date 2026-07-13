@@ -7,7 +7,7 @@ here.
 """
 
 from .clarify import clarify, route_after_clarify
-from .execute import execute
+from .execute import execute_graph
 from .plan import plan
 from .respond import respond
 from .understand import understand
@@ -17,6 +17,6 @@ __all__ = [
     "plan",
     "clarify",
     "route_after_clarify",
-    "execute",
+    "execute_graph",
     "respond",
 ]

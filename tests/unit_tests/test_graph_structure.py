@@ -102,78 +102,130 @@ def test_route_after_clarify_ends_on_ask_user() -> None:
     )
 
 
-# --- execute resilience (independent-branch fault tolerance) -----------------------------
+# --- execute subgraph: shape, parallel fan-out, aggregation, resilience ------------------
+
+
+def _run_execute(state: dict) -> dict:
+    """Invoke the compiled execute subgraph on its own (no checkpointer for a single turn)."""
+    return execute_mod.execute_graph.invoke(state)
+
+
+def test_execute_subgraph_shape() -> None:
+    edges = _edges(execute_mod.execute_graph)
+    nodes = _nodes(execute_mod.execute_graph)
+    # One node per capability, plus the dispatch anchor and the aggregate fan-in.
+    for cap in ("recommend", "evaluate", "compare", "discussion", "path", "content"):
+        assert cap in nodes
+        assert ("dispatch", cap) in edges  # fan-out branch (conditional)
+        assert (cap, "aggregate") in edges  # fan-in
+    assert ("__start__", "dispatch") in edges
+    assert ("dispatch", "aggregate") in edges  # empty-plan short-circuit
+    assert ("aggregate", "__end__") in edges
 
 
 def test_execute_skips_failing_capability_and_keeps_the_rest(monkeypatch) -> None:
+    # `recommend` and `evaluate` run as their own subgraph nodes (not _capability_node), so this
+    # generic resilience test uses two run-backed capabilities instead.
     calls: list[str] = []
 
     def good_run(view: dict) -> dict:
-        calls.append("recommend")
-        return {"books": [{"title": "Where the Wild Things Are"}]}
+        calls.append("content")
+        return {"draft": "a lovely post"}
 
     def bad_run(view: dict) -> dict:
         raise RuntimeError("boom")
 
     fake_registry = {
-        "recommend": SimpleNamespace(name="recommend", run=good_run),
-        "evaluate": SimpleNamespace(name="evaluate", run=bad_run),
+        "content": SimpleNamespace(name="content", run=good_run),
+        "compare": SimpleNamespace(name="compare", run=bad_run),
     }
     monkeypatch.setattr(execute_mod, "REGISTRY", fake_registry)
 
-    state = {
-        "plan": {
-            "steps": [
-                {"capability": "recommend", "depends_on": []},
-                {"capability": "evaluate", "depends_on": []},
-            ]
-        }
-    }
-    out = execute_mod.execute(state)  # must not raise
-
-    assert out["capability_results"]["recommend"]["books"][0]["title"].startswith(
-        "Where"
+    out = _run_execute(
+        {"plan": {"steps": [{"capability": "content"}, {"capability": "compare"}]}}
     )
-    assert "evaluate" not in out["capability_results"]  # failed step produced no result
-    assert calls == ["recommend"]
+
+    assert out["capability_results"]["content"]["draft"] == "a lovely post"
+    assert "compare" not in out["capability_results"]  # failed step produced no result
+    assert calls == ["content"]
 
 
-def test_execute_skips_dependent_when_its_producer_fails(monkeypatch) -> None:
-    # A capability whose upstream producer failed must NOT run as if the input existed -- the
-    # failed producer is not marked "done", so its dependent is skipped.
-    calls: list[str] = []
+def test_execute_runs_independent_capabilities_in_parallel(monkeypatch) -> None:
+    # Two independent capabilities both run and both land in capability_results -- no ordering,
+    # no dependency (the decoupling this refactor introduced).
+    def compare_run(view: dict) -> dict:
+        return {"comparison": "book A edges out book B"}
 
-    def bad_run(view: dict) -> dict:
-        calls.append("recommend")
-        raise RuntimeError("boom")
+    def content_run(view: dict) -> dict:
+        return {"draft": "a lovely post"}
 
-    def dependent_run(view: dict) -> dict:
-        calls.append("discuss")
-        return {"discussion": "questions"}
-
-    fake_registry = {
-        "recommend": SimpleNamespace(name="recommend", run=bad_run),
-        "discuss": SimpleNamespace(name="discuss", run=dependent_run),
-    }
-    monkeypatch.setattr(execute_mod, "REGISTRY", fake_registry)
-
-    state = {
-        "plan": {
-            "steps": [
-                {"capability": "recommend", "depends_on": []},
-                {"capability": "discuss", "depends_on": ["recommend"]},
-            ]
-        }
-    }
-    out = execute_mod.execute(state)  # must not raise, must not run the dependent
-
-    assert calls == ["recommend"]  # discuss was skipped
-    assert out["capability_results"] == {}
+    monkeypatch.setattr(
+        execute_mod,
+        "REGISTRY",
+        {
+            "compare": SimpleNamespace(name="compare", run=compare_run),
+            "content": SimpleNamespace(name="content", run=content_run),
+        },
+    )
+    out = _run_execute(
+        {"plan": {"steps": [{"capability": "compare"}, {"capability": "content"}]}}
+    )
+    assert set(out["capability_results"]) == {"compare", "content"}
+    assert out["capability_results"]["content"]["draft"] == "a lovely post"
 
 
 def test_execute_always_returns_capability_results_channel() -> None:
-    # No steps -> still overwrite the channel to {} so a prior turn's results never linger.
-    assert execute_mod.execute({"plan": {"steps": []}}) == {"capability_results": {}}
+    # No steps -> aggregate still writes the channel as {} so a prior turn's results never linger.
+    out = _run_execute({"plan": {"steps": []}})
+    assert out["capability_results"] == {}
+
+
+def test_execute_scratch_does_not_leak_across_turns(monkeypatch) -> None:
+    # Run the subgraph inside a minimal parent (as it runs in the real graph) twice on one thread.
+    # The private `results` scratch must reset each turn: turn 2's capability_results must hold
+    # ONLY turn 2's capability, not turn 1's leaked in.
+    monkeypatch.setattr(
+        execute_mod,
+        "REGISTRY",
+        {
+            "compare": SimpleNamespace(
+                name="compare", run=lambda v: {"comparison": ""}
+            ),
+            "content": SimpleNamespace(name="content", run=lambda v: {"draft": "x"}),
+        },
+    )
+
+    class P(TypedDict, total=False):
+        plan: dict
+        capability_results: dict
+
+    pb = StateGraph(P)
+    pb.add_node("execute", execute_mod.execute_graph)
+    pb.add_edge(START, "execute")
+    pb.add_edge("execute", END)
+    parent = pb.compile(checkpointer=MemorySaver())
+
+    cfg = {"configurable": {"thread_id": "t-exec"}}
+    first = parent.invoke({"plan": {"steps": [{"capability": "compare"}]}}, cfg)
+    second = parent.invoke({"plan": {"steps": [{"capability": "content"}]}}, cfg)
+
+    assert set(first["capability_results"]) == {"compare"}
+    assert set(second["capability_results"]) == {"content"}  # turn 1 did not leak in
+
+
+# --- planner: intents map to a flat, independent capability list -------------------------
+
+
+def test_plan_produces_flat_independent_steps() -> None:
+    from agent.pipeline import plan
+
+    out = plan(
+        {"understanding": {"intents": ["book_recommendation", "book_evaluation"]}}
+    )
+    steps = out["plan"]["steps"]
+    assert [s["capability"] for s in steps] == ["recommend", "evaluate"]
+    # Decoupled: steps carry no inter-capability dependency (the field no longer exists).
+    assert all("depends_on" not in s for s in steps)
 
 
 # --- core invariant: interrupt in a parallel branch does not re-run the sibling ----------

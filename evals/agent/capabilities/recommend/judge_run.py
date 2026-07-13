@@ -17,7 +17,7 @@ from typing import Any
 from langchain.messages import HumanMessage
 
 from agent.capabilities._shared import child_brief, policies_brief
-from agent.capabilities.registry import REGISTRY
+from agent.capabilities.recommend import recommend_graph
 from evals._harness import judge as judge_mod
 from evals._harness import metrics
 from evals._harness.cases import load_jsonl
@@ -51,8 +51,9 @@ def _state(case: dict) -> dict[str, Any]:
 
 
 def generate(case: dict) -> dict[str, Any]:
-    """Run the real recommend capability and return its Booklist dump."""
-    return REGISTRY["recommend"].run(_state(case))
+    """Run the real recommend subgraph and return its booklist ({books, note})."""
+    final = recommend_graph.invoke(_state(case))
+    return {"books": final.get("books") or [], "note": final.get("note")}
 
 
 def render(output: dict[str, Any]) -> str:

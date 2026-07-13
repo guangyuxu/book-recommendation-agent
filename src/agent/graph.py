@@ -23,7 +23,7 @@ from .lifecycle import LOAD_CONTEXT_RETRY, load_context
 from .memory import memory_graph
 from .pipeline import (
     clarify,
-    execute,
+    execute_graph,
     plan,
     respond,
     route_after_clarify,
@@ -42,7 +42,9 @@ builder.add_node("load_context", load_context, retry_policy=LOAD_CONTEXT_RETRY)
 builder.add_node("understand", with_turn_context(understand))
 builder.add_node("plan", plan)
 builder.add_node("clarify", with_turn_context(clarify))
-builder.add_node("execute", with_turn_context(execute))
+builder.add_node(
+    "execute", execute_graph
+)  # the execute subgraph (its LLM node wraps itself)
 builder.add_node(
     "memory", memory_graph
 )  # the memory subgraph (its LLM nodes wrap themselves)

@@ -12,7 +12,6 @@ from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
 
-from ..capabilities import REGISTRY
 from ..domain import (
     create_recommendation_session,
     domain_session,
@@ -65,23 +64,12 @@ def _render_outputs(results: dict[str, Any]) -> str:
 
 
 def _prose(name: str, result: dict[str, Any]) -> str | None:
-    """Pull a prose capability's text from its declared produced-resource key.
+    """Pull a prose capability's text: each returns a single `{key: text}`, so take that string.
 
-    Reading the exact key (e.g. `evaluation`, `questions`) is precise: iterating dict values and
-    taking the first string would grab an unrelated string field (a status/label) if it happened
-    to come first. Only when the capability declares no produced key do we fall back to that scan.
+    Every prose capability (evaluate/compare/discussion/path/content) returns exactly one
+    string-valued key, so the first non-empty string in the result is that text.
     """
-    spec = REGISTRY.get(name)
-    keys = spec.produces if spec else ()
-    for key in keys:
-        value = result.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-    if not keys:
-        return next(
-            (v for v in result.values() if isinstance(v, str) and v.strip()), None
-        )
-    return None
+    return next((v for v in result.values() if isinstance(v, str) and v.strip()), None)
 
 
 def _switch_note(state: FlowState) -> str:
