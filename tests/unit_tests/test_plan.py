@@ -1,9 +1,9 @@
-"""Unit tests for the plan node: the deterministic, dependency-aware DAG resolver.
+"""Unit tests for the plan node: the deterministic intent -> capability resolver.
 
-Pure functions -- no LLM, no DB. They turn an understanding's intents into an ordered
-capability plan, wiring producer->consumer edges only when BOTH goals are present, and
-topologically sorting the result. `ambient_satisfied` is the shared precondition check the
-clarify node reuses, so it is pinned here too.
+Pure functions -- no LLM, no DB. Capabilities are independent (none consumes another's output),
+so `plan` emits a FLAT, unordered list of capabilities with no dependency edges; Execute fans
+them out in parallel. `ambient_satisfied` is the shared precondition check the clarify node
+reuses, so it is pinned here too.
 """
 
 from __future__ import annotations
@@ -55,44 +55,28 @@ def test_plan_empty_for_profile_update_only_turn() -> None:
     assert _steps(_understanding(["child_profile_update"])) == []
 
 
-# --- plan: single goal, no edges ---------------------------------------------------------
+# --- plan: flat, unordered capability list (no dependency edges) -------------------------
 
 
-def test_plan_single_goal_has_no_dependencies() -> None:
+def test_plan_single_goal_is_one_step() -> None:
     steps = _steps(_understanding(["book_recommendation"]))
     assert len(steps) == 1
     assert steps[0]["capability"] == "recommend"
-    assert steps[0]["depends_on"] == []
+    # Capabilities are independent: a step carries no dependency channel.
+    assert "depends_on" not in steps[0]
 
 
-# --- plan: producer -> consumer edges ----------------------------------------------------
-
-
-def test_recommend_feeds_discussion() -> None:
-    # discussion requires `books`; recommend produces `books` -> recommend depends before discuss.
-    steps = _steps(_understanding(["reading_discussion", "book_recommendation"]))
-    by_cap = {s["capability"]: s["depends_on"] for s in steps}
-    assert by_cap["discussion"] == ["recommend"]
-    assert by_cap["recommend"] == []
-    # Topological order: the producer comes first.
+def test_plan_multiple_goals_are_a_flat_list_in_goal_order() -> None:
+    # Both intents become independent steps; no producer->consumer edge is wired between them.
+    steps = _steps(_understanding(["book_recommendation", "reading_discussion"]))
     assert [s["capability"] for s in steps] == ["recommend", "discussion"]
+    assert all("depends_on" not in s for s in steps)
 
 
-def test_recommend_feeds_evaluate() -> None:
-    # evaluate requires `books`; recommend produces them.
-    steps = _steps(_understanding(["book_evaluation", "book_recommendation"]))
-    by_cap = {s["capability"]: s["depends_on"] for s in steps}
-    assert by_cap["evaluate"] == ["recommend"]
-    assert [s["capability"] for s in steps] == ["recommend", "evaluate"]
-
-
-def test_no_edge_when_only_the_consumer_is_present() -> None:
-    # A producer is never pulled in to satisfy an input -- discussion alone has no `recommend`
-    # producer this turn, so it carries no dependency (books come from an ambient/named source).
+def test_plan_does_not_pull_in_an_unrequested_producer() -> None:
+    # discussion alone stays a single step -- recommend is NOT added to "produce" its books.
     steps = _steps(_understanding(["reading_discussion"]))
-    assert len(steps) == 1
-    assert steps[0]["capability"] == "discussion"
-    assert steps[0]["depends_on"] == []
+    assert [s["capability"] for s in steps] == ["discussion"]
 
 
 # --- ambient_satisfied (shared with clarify) ---------------------------------------------
