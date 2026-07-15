@@ -24,6 +24,7 @@ from agent import usage_tracker
 from agent.state import AppContext
 from agent.usage_tracker import (
     UsageCallbackHandler,
+    _emit_usage_event,
     _node_from_meta,
     with_turn_context,
 )
@@ -178,3 +179,49 @@ def test_node_from_meta_parses_nested_subgraph_ns() -> None:
 
 def test_node_from_meta_empty_when_unknown() -> None:
     assert _node_from_meta({}) == ""
+
+
+# --- live {node, tokens} custom stream events -------------------------------------------
+# on_llm_end also emits a per-node usage event over stream_mode="custom" (the live half of the
+# usage view). It is best-effort: safe outside a run, and a no-op inside a non-streaming run.
+
+
+def test_streaming_run_emits_node_tokens_custom_event(
+    isolated_queue: queue.SimpleQueue,
+) -> None:
+    """A streamed graph run surfaces one {node, tokens} custom event per LLM call."""
+    graph = _build_graph(wrap=True)
+    events = list(
+        graph.stream(
+            {},
+            context=AppContext(
+                family_id=FAMILY_ID, family_member_id=MEMBER_ID, child_id=None
+            ),
+            stream_mode="custom",
+        )
+    )
+    # 11 input + 7 output tokens (see _FakeUsageModel), attributed to the "llm" node.
+    assert {"node": "llm", "tokens": 18} in events
+
+
+def test_non_streaming_invoke_still_records_usage(
+    isolated_queue: queue.SimpleQueue,
+) -> None:
+    """Outside a stream the emit is a no-op (LangGraph's no-op writer) and must not disturb the
+    DB usage path: the record is still enqueued exactly as before."""
+    _invoke(_build_graph(wrap=True))
+    records = _drain(isolated_queue)
+    assert len(records) == 1
+    assert records[0]["input_tokens"] == 11
+    assert records[0]["output_tokens"] == 7
+
+
+def test_emit_usage_event_safe_outside_run() -> None:
+    """Called with no active graph run, get_stream_writer() raises; the emit swallows it."""
+    _emit_usage_event("respond", 42)  # must not raise
+
+
+def test_emit_usage_event_skips_empty_node_or_zero_tokens() -> None:
+    # No node name or no tokens => nothing to emit; must be a harmless no-op.
+    _emit_usage_event("", 42)
+    _emit_usage_event("respond", 0)

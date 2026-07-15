@@ -8,6 +8,7 @@ recommendation turns (a recommend result with a booklist and a resolved child) -
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import Any
 
 from langchain.messages import AIMessage, SystemMessage
@@ -103,6 +104,19 @@ def _confirmation_note(state: FlowState) -> str:
     return ""
 
 
+def _gather_text(chunks: Iterable[Any]) -> str:
+    """Reduce a stream of message chunks into the final reply text.
+
+    `respond` streams its reply (so `stream_mode="messages"` surfaces tokens to the frontend as
+    they arrive) but still needs the whole string for state + persistence. AIMessageChunks add
+    together into one message; an empty stream yields "".
+    """
+    gathered: Any = None
+    for chunk in chunks:
+        gathered = chunk if gathered is None else gathered + chunk
+    return str(gathered.content) if gathered is not None else ""
+
+
 def _compose(state: FlowState, rendered: str) -> str:
     system = SystemMessage(
         content=(
@@ -116,8 +130,9 @@ def _compose(state: FlowState, rendered: str) -> str:
             f"{reply_directive(state.get('reply_language'))}"
         )
     )
-    reply = STANDARD.chain().invoke([system, *state["messages"]])
-    return str(reply.content)
+    # Stream (not .invoke) so token chunks reach the frontend via stream_mode="messages";
+    # _gather_text reassembles the full reply for the AIMessage we return to state.
+    return _gather_text(STANDARD.stream_chain().stream([system, *state["messages"]]))
 
 
 def _persist_recommendation(

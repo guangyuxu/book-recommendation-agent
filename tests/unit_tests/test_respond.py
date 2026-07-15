@@ -8,10 +8,11 @@ the switch/confirmation hint lines that steer the reply. No LLM, no DB.
 
 from __future__ import annotations
 
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from agent.pipeline.respond import (
     _confirmation_note,
+    _gather_text,
     _last_human_text,
     _prose,
     _render_outputs,
@@ -141,3 +142,21 @@ def test_last_human_text_returns_most_recent_human_message() -> None:
 
 def test_last_human_text_empty_when_no_human_message() -> None:
     assert _last_human_text([AIMessage(content="only assistant")]) == ""
+
+
+# --- _gather_text: reassemble a streamed reply ------------------------------------------
+# respond streams its reply (stream_mode="messages") but still needs the whole string for the
+# AIMessage it writes to state; _gather_text adds the chunks back into one message's content.
+
+
+def test_gather_text_concatenates_streamed_chunks() -> None:
+    chunks = [
+        AIMessageChunk(content="Hello"),
+        AIMessageChunk(content=", "),
+        AIMessageChunk(content="reader!"),
+    ]
+    assert _gather_text(chunks) == "Hello, reader!"
+
+
+def test_gather_text_empty_stream_is_empty_string() -> None:
+    assert _gather_text([]) == ""
