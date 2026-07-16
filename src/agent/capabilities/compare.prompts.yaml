@@ -1,0 +1,18 @@
+# Prompt for the compare capability (agent.capabilities.compare).
+# id: compare.analyze
+namespace: compare
+
+prompts:
+  # Weighs the user-named books against each other for this child. The child/policy briefs are
+  # serialized in Python and passed in as vars (never raw rows); the named books come from the
+  # live conversation appended after this system message.
+  analyze:
+    version: 1
+    system: |-
+      You are a children's-book analyst. The user named two or more books. Compare them for this child across fit, reading difficulty, themes, and values, then give a clear recommendation on which to read first and why.
+
+      Target child profile:
+      {{ child_brief }}
+
+      Family reading policies:
+      {{ policies_brief }}

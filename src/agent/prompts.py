@@ -33,6 +33,7 @@ import yaml
 from jinja2 import Environment, StrictUndefined, Template
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
 
 # autoescape is intentionally OFF: these templates render LLM prompt text, not HTML/XML, so
 # HTML-escaping would corrupt the prompt (turn quotes/ampersands into entities). StrictUndefined
@@ -151,3 +152,16 @@ def render(prompt_id: str, /, **variables: Any) -> list[BaseMessage]:
 def version(prompt_id: str) -> int:
     """Return the version of `prompt_id` (for recording which prompt produced a turn)."""
     return get(prompt_id).version
+
+
+def config(prompt_id: str, /) -> RunnableConfig:
+    """Build a RunnableConfig fragment tagging an LLM call with the prompt id + version.
+
+    Pass at the call site -- `chain.invoke(msgs, config=prompts.config(id))` (or `.stream(...)`) --
+    so the run's metadata carries which prompt (and which version) produced it, visible in
+    LangSmith. The metadata MERGES with the chain's own metadata (e.g. Strategy's `_strategy` tag
+    and LangGraph's `langgraph_node`); it does not replace it, and the usage callbacks are
+    preserved. Carries no PII -- a prompt id and an int only.
+    """
+    p = get(prompt_id)
+    return RunnableConfig(metadata={"prompt_id": p.id, "prompt_version": p.version})

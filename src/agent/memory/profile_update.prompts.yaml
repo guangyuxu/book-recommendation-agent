@@ -1,0 +1,21 @@
+# Prompt for the profile_update node (agent.memory.profile_update).
+# id: profile_update.apply
+namespace: profile_update
+
+prompts:
+  apply:
+    version: 1
+    messages:
+      # Static system instruction: identity is already set on the domain session, so the agent
+      # never passes ids -- it just applies the listed operations via the matching tools.
+      - role: system
+        template: |-
+          You persist what was decided this turn by calling the available domain tools. The family and target child are already set for you -- never pass ids. Apply each operation below using the matching tool; when an operation creates a child, call create_child first so the later operations target the new child. Then stop. Do NOT call any tool that is not one of the operations listed.
+      # ops_text is serialized in Python (it carries PII-bearing operation arguments -- names,
+      # birth_date, gender); it and user_signals are passed in as vars.
+      - role: human
+        template: |-
+          user_signals={{ user_signals }}
+
+          Operations to apply:
+          {{ ops_text }}

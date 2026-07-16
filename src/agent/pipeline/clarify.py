@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.messages import AIMessage
 
+from .. import prompts
 from ..capabilities import required_inputs
 from ..language import Language, normalize_language, reply_directive
 from ..llm import FAST
@@ -83,26 +84,19 @@ def clarify(state: FlowState) -> dict[str, Any]:
 
     has_child = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))
 
-    system = SystemMessage(
-        content=(
-            "You are a clarification policy. Decide one of: continue (we can act now), "
-            "ask_user (a required input is missing and we must ask), or best_effort (proceed "
-            "with stated assumptions). Prefer continue or best_effort; only ask_user when a "
-            "genuinely required input (e.g. a specific book title for evaluate/compare/"
-            "discussion) is absent and cannot be reasonably assumed. If you ask_user, write a "
-            "single concise question." + reply_directive(lang)
-        )
-    )
-    human = HumanMessage(
-        content=(
-            f"planned_capabilities={[s['capability'] for s in steps]}\n"
-            f"required_inputs={needs}\n"
-            f"target_child_known={has_child}\n"
-            f"mentioned_books={u.get('mentioned_books')}"
-        )
+    messages = prompts.render(
+        "clarify.decide",
+        reply_directive=reply_directive(lang).lstrip("\n"),
+        planned_capabilities=[s["capability"] for s in steps],
+        required_inputs=needs,
+        target_child_known=has_child,
+        mentioned_books=u.get("mentioned_books"),
     )
     result = cast(
-        ClarificationDecision, _structured.invoke([system, human, *state["messages"]])
+        ClarificationDecision,
+        _structured.invoke(
+            [*messages, *state["messages"]], config=prompts.config("clarify.decide")
+        ),
     )
     if result.decision == "ask_user":
         return _ask(result, lang)

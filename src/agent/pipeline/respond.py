@@ -102,7 +102,11 @@ def _compose(state: FlowState, rendered: str) -> str:
     )
     # Stream (not .invoke) so token chunks reach the frontend via stream_mode="messages";
     # _gather_text reassembles the full reply for the AIMessage we return to state.
-    return _gather_text(STANDARD.stream_chain().stream([*messages, *state["messages"]]))
+    return _gather_text(
+        STANDARD.stream_chain().stream(
+            [*messages, *state["messages"]], config=prompts.config("respond.compose")
+        )
+    )
 
 
 def _persist_recommendation(

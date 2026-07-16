@@ -8,8 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain.messages import SystemMessage
-
+from .. import prompts
 from ..llm import STANDARD, Strategy
 
 
@@ -82,23 +81,25 @@ def mentioned_books(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def run_text(
     state: dict[str, Any],
-    instructions: str,
+    prompt_id: str,
     *,
     strategy: Strategy | None = None,
 ) -> str:
-    """Run a one-shot LLM call over the conversation with capability instructions.
+    """Run a one-shot LLM call over the conversation with a capability's registry prompt.
 
-    Pass `strategy=HEAVY` for deep-analysis capabilities (evaluate, compare) or leave
-    unset to use STANDARD. Returns the reply text; callers wrap it under their
-    produced-resource key, e.g. `{"evaluation": run_text(..., strategy=HEAVY)}`.
+    `prompt_id` is a `<namespace>.<key>` in the prompt registry whose template embeds the child
+    and policy briefs (passed as pre-serialized vars -- never raw rows). Pass `strategy=HEAVY` for
+    deep-analysis capabilities (compare) or leave unset to use STANDARD. Returns the reply text;
+    callers wrap it under their produced-resource key, e.g.
+    `{"comparison": run_text(..., strategy=HEAVY)}`.
     """
     _strategy = strategy if strategy is not None else STANDARD
-    blocks = [
-        instructions,
-        f"Target child profile:\n{child_brief(state)}",
-        f"Family reading policies:\n{policies_brief(state)}",
-    ]
+    system = prompts.render(
+        prompt_id,
+        child_brief=child_brief(state),
+        policies_brief=policies_brief(state),
+    )
     reply = _strategy.chain().invoke(
-        [SystemMessage(content="\n\n".join(blocks)), *state["messages"]]
+        [*system, *state["messages"]], config=prompts.config(prompt_id)
     )
     return str(reply.content)

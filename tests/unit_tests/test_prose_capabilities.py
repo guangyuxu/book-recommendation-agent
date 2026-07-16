@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from langchain.messages import HumanMessage
 
+from agent import prompts
 from agent.capabilities import _shared, compare, content, discussion, path
 from agent.llm import HEAVY, STANDARD
 
@@ -41,10 +42,10 @@ def test_run_capability_contract(
     captured: dict[str, Any] = {}
 
     def fake_run_text(
-        state: dict[str, Any], instructions: str, *, strategy: Any = None
+        state: dict[str, Any], prompt_id: str, *, strategy: Any = None
     ) -> str:
         captured["state"] = state
-        captured["instructions"] = instructions
+        captured["prompt_id"] = prompt_id
         captured["strategy"] = strategy
         return "PROSE"
 
@@ -58,11 +59,9 @@ def test_run_capability_contract(
     assert out == {key: "PROSE"}
     # 2) the declared reasoning strategy (HEAVY for deep analysis, STANDARD otherwise)
     assert captured["strategy"] is strategy
-    # 3) delegated the turn's state and non-empty, capability-specific instructions
+    # 3) delegated the turn's state and a registry prompt id that resolves to a real prompt
     assert captured["state"] is state
-    assert (
-        isinstance(captured["instructions"], str) and captured["instructions"].strip()
-    )
+    assert prompts.version(captured["prompt_id"]) >= 1
 
 
 def test_produced_keys_are_distinct() -> None:
@@ -78,7 +77,7 @@ class _FakeChain:
     def __init__(self, sink: dict[str, Any]) -> None:
         self._sink = sink
 
-    def invoke(self, messages: list[Any]) -> Any:
+    def invoke(self, messages: list[Any], **_kwargs: Any) -> Any:
         self._sink["messages"] = messages
         return SimpleNamespace(content="  the reply  ")
 
@@ -106,13 +105,13 @@ def _state() -> dict[str, Any]:
 
 def test_run_text_builds_prompt_and_returns_reply_text() -> None:
     strategy = _FakeStrategy()
-    out = _shared.run_text(_state(), "INSTRUCTIONS-HERE", strategy=strategy)
+    # run_text now renders a registry prompt by id; the template folds in the child/policy briefs.
+    out = _shared.run_text(_state(), "compare.analyze", strategy=strategy)
 
     assert out == "  the reply  "  # returns the reply content verbatim (str())
     assert strategy.chain_calls == 1
     system, *rest = strategy.sink["messages"]
-    # The system prompt carries the instructions + the child/policy briefs...
-    assert "INSTRUCTIONS-HERE" in system.content
+    # The rendered system prompt carries the child/policy briefs (passed as serialized vars)...
     assert "Alex" in system.content  # child_brief folded in
     assert "build curiosity" in system.content  # policies_brief folded in
     # ...and the conversation messages are appended after it.
@@ -130,6 +129,6 @@ def test_run_text_defaults_to_standard_strategy(
         return _FakeChain({})
 
     monkeypatch.setattr(STANDARD, "chain", fake_chain)
-    out = _shared.run_text(_state(), "do it")  # no strategy -> STANDARD
+    out = _shared.run_text(_state(), "path.plan")  # no strategy -> STANDARD
     assert out == "  the reply  "
     assert calls["n"] == 1

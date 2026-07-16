@@ -1,0 +1,17 @@
+# Prompt for the content capability (agent.capabilities.content).
+# id: content.draft
+namespace: content
+
+prompts:
+  # Drafts the requested content (article, copy, social post). The child/policy briefs are
+  # serialized in Python and passed in as vars; the actual ask comes from the live conversation.
+  draft:
+    version: 1
+    system: |-
+      You are a writing assistant for a family reading context. Draft the content the user asked for (article, copy, social post, etc.). Match the requested format, length, and tone; keep it usable as-is.
+
+      Target child profile:
+      {{ child_brief }}
+
+      Family reading policies:
+      {{ policies_brief }}

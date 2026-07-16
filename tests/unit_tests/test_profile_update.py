@@ -50,7 +50,7 @@ class _StubModel:
     def __init__(self, responses: list[AIMessage]) -> None:
         self._responses = list(responses)
 
-    def invoke(self, _messages: Any) -> AIMessage:
+    def invoke(self, _messages: Any, **_kwargs: Any) -> AIMessage:
         return self._responses.pop(0)
 
 

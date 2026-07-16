@@ -12,8 +12,9 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from langchain.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain.messages import ToolMessage
 
+from .. import prompts
 from ..domain import MEMORY_TOOLS, MEMORY_TOOLS_BY_NAME, domain_session
 from ..llm import STANDARD
 from ..serialize import load_family_entities
@@ -50,29 +51,17 @@ def profile_update(state: FlowState) -> dict[str, Any]:
     with domain_session(
         family_id, target, requester_member_id=state.get("family_member_id")
     ) as ctx:
-        system = SystemMessage(
-            content=(
-                "You persist what was decided this turn by calling the available domain tools. "
-                "The family and target child are already set for you -- never pass ids. Apply "
-                "each operation below using the matching tool; when an operation creates a child, "
-                "call create_child first so the later operations target the new child. Then stop. "
-                "Do NOT call any tool that is not one of the operations listed."
-            )
+        messages = prompts.render(
+            "profile_update.apply",
+            user_signals=u.get("user_signals"),
+            ops_text=ops_text,
         )
-        messages = [
-            system,
-            HumanMessage(
-                content=(
-                    f"user_signals={u.get('user_signals')}\n\n"
-                    f"Operations to apply:\n{ops_text}"
-                )
-            ),
-        ]
         made_calls = False
         stopped_cleanly = False
         last_had_error = False
+        apply_config = prompts.config("profile_update.apply")
         for _ in range(_MAX_ITERATIONS):
-            response = _bound.invoke(messages)
+            response = _bound.invoke(messages, config=apply_config)
             messages.append(response)
             tool_calls = getattr(response, "tool_calls", None)
             if not tool_calls:

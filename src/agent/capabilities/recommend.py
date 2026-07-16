@@ -134,7 +134,11 @@ def generate(state: RecommendState) -> dict[str, Any]:
     )
     try:
         result = cast(
-            Booklist, _generate.invoke([*system, *(state.get("messages") or [])])
+            Booklist,
+            _generate.invoke(
+                [*system, *(state.get("messages") or [])],
+                config=prompts.config("recommend.generate"),
+            ),
         )
         dump = result.model_dump()
     except Exception as exc:  # degrade rather than sink the turn
@@ -177,7 +181,11 @@ def validate(state: RecommendState) -> dict[str, Any]:
     )
     try:
         screening = cast(
-            Screening, _screen.invoke([*system, *(state.get("messages") or [])])
+            Screening,
+            _screen.invoke(
+                [*system, *(state.get("messages") or [])],
+                config=prompts.config("recommend.validate"),
+            ),
         )
         verdicts = screening.verdicts
     except Exception as exc:  # screening unavailable -> keep the proposed list as-is

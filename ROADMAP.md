@@ -39,13 +39,20 @@ explicit in a single place. The agent's job is to stay safe under these assumpti
 
 ## P0 — highest priority
 
-### 1. Prompt management
-Prompts are inline string literals across the nodes/capabilities. As capabilities are strengthened
-this becomes the main quality-and-maintenance risk. Move to a versioned prompt registry so prompts
+### ✅ 1. Prompt management
+Prompts were inline string literals across the nodes/capabilities — the main quality-and-maintenance
+risk as capabilities are strengthened. Now a versioned prompt registry (`agent.prompts`) so prompts
 can be reviewed, versioned, A/B-tested, and rolled back independently of code.
-- Extract every node/capability system prompt into a versioned store (id + version + text).
-- Record the prompt version used per turn (alongside `token_usage` / trace) for reproducibility.
-- Enable A/B and rollback without a code deploy.
+- ✅ Extracted every node/capability prompt into a versioned store: co-located `*.prompts.yaml`
+  files (id `<namespace>.<key>` + integer `version` + Jinja template), loaded by `agent.prompts`.
+  The YAML/Python boundary ("Python decides what is true; the template decides how to say it") is
+  codified as a rule in CLAUDE.md.
+- ✅ Record the prompt version used per turn — via the **trace**: every LLM call passes
+  `config=prompts.config(id)`, tagging the run metadata with `prompt_id` + `prompt_version`
+  (visible in LangSmith). Persisting it onto the `token_usage_record` row is a small follow-up
+  folded into **#3 Observability** (which owns that store), not yet wired.
+- A/B + rollback without a code deploy: delivered by **L2 — Assistants + `configurable`** (the
+  registry is the prerequisite, now in place); tracked there.
 
 ### LangGraph advanced features — trial / adoption practice
 A deliberate hands-on practice to exercise LangGraph's advanced surface and de-risk the roadmap.

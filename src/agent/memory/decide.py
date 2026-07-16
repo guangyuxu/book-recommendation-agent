@@ -8,8 +8,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from langchain.messages import HumanMessage, SystemMessage
-
+from .. import prompts
 from ..domain import MEMORY_TOOLS_BY_NAME
 from ..llm import FAST
 from ..state import FlowState
@@ -29,28 +28,17 @@ def memory_policy(state: FlowState) -> dict[str, Any]:
     if not signals and not u.get("child_is_new"):
         return {"memory_operations": []}
 
-    system = SystemMessage(
-        content=(
-            "You are a memory policy. Decide what from this turn is worth storing long-term "
-            "about the child or family, and express each as a domain operation. Use the EXACT "
-            "operation name from the available list, with plain domain arguments (never database "
-            "ids). Skip transient or already-known facts.\n\n"
-            "Argument names MUST match the tool's real parameters. In particular use "
-            "`birth_date` (an ISO date; a bare year like '2023' is fine if only the year is "
-            "known) -- never `age`, and never invent parameters. `gender` must be exactly "
-            "'Male' or 'Female'.\n\n"
-            "If the child being discussed is new (child_is_new=true) and worth remembering, emit "
-            "create_child first (with whatever identity was given), then their facts. Creating a "
-            "child and changing identity fields (gender, birth_date, name) are confirmed with the "
-            "parent before they take effect -- still emit them normally; a later step handles the "
-            "confirmation. Ordinary reading-profile facts are saved directly.\n\n"
-            f"Available operations: {_AVAILABLE_OPERATIONS}"
-        )
-    )
-    human = HumanMessage(
-        content=(f"child_is_new={u.get('child_is_new')}\nuser_signals={signals}")
+    messages = prompts.render(
+        "memory_policy.decide",
+        available_operations=_AVAILABLE_OPERATIONS,
+        child_is_new=u.get("child_is_new"),
+        user_signals=signals,
     )
     result = cast(
-        MemoryDecision, _structured.invoke([system, human, *state["messages"]])
+        MemoryDecision,
+        _structured.invoke(
+            [*messages, *state["messages"]],
+            config=prompts.config("memory_policy.decide"),
+        ),
     )
     return {"memory_operations": [op.model_dump() for op in result.operations]}
