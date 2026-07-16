@@ -11,12 +11,10 @@ from __future__ import annotations
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from agent.pipeline.respond import (
-    _confirmation_note,
     _gather_text,
     _last_human_text,
     _prose,
     _render_outputs,
-    _switch_note,
 )
 
 # --- _render_outputs: recommend booklist -------------------------------------------------
@@ -89,43 +87,8 @@ def test_prose_ignores_non_string_fields() -> None:
     assert _prose("mystery", {"n": 3, "text": "hello"}) == "hello"
 
 
-# --- _switch_note ------------------------------------------------------------------------
-
-
-def test_switch_note_present_when_focus_changed() -> None:
-    note = _switch_note({"child_switch": {"to_name": "小儿子"}})
-    assert "小儿子" in note
-    assert "switched" in note
-
-
-def test_switch_note_empty_without_a_switch() -> None:
-    assert _switch_note({}) == ""
-    assert _switch_note({"child_switch": {}}) == ""
-
-
-# --- _confirmation_note ------------------------------------------------------------------
-
-
-def test_confirmation_note_applied_acknowledges_saved() -> None:
-    note = _confirmation_note({"confirmation": {"status": "applied"}})
-    assert "saved" in note
-
-
-def test_confirmation_note_rejected_acknowledges_not_saved() -> None:
-    note = _confirmation_note({"confirmation": {"status": "rejected"}})
-    assert "not save" in note
-
-
-def test_confirmation_note_error_must_not_claim_saved() -> None:
-    note = _confirmation_note({"confirmation": {"status": "error"}})
-    assert "wasn't saved" in note
-    # The error hint explicitly forbids claiming success.
-    assert "do NOT" in note
-
-
-def test_confirmation_note_empty_when_no_gate_resolved() -> None:
-    assert _confirmation_note({}) == ""
-    assert _confirmation_note({"confirmation": {}}) == ""
+# The switch-focus and confirmation-outcome hint wording now lives in the respond.compose prompt
+# (respond.prompts.yaml) as Jinja conditionals; those cases are pinned in test_prompts.py.
 
 
 # --- _last_human_text --------------------------------------------------------------------

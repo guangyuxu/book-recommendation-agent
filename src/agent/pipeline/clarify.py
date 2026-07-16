@@ -1,8 +1,10 @@
 """Clarification Policy: continue, ask the user, or run best-effort.
 
-Ambiguous-child is decided deterministically (always ask). Otherwise the LLM weighs the
-planned capabilities' required inputs against what's known and chooses. On ask_user the node
-appends the question and the graph routes to END; the next user turn re-enters understand.
+Ambiguous-child is decided deterministically (always ask), and so is the common case where
+every required input is already satisfied (always continue -- no LLM). The LLM is consulted
+only when a required input is genuinely unmet, to weigh asking vs. a reasonable assumption.
+On ask_user the node appends the question and the graph routes to END; the next user turn
+re-enters understand.
 """
 
 from __future__ import annotations
@@ -68,6 +70,17 @@ def clarify(state: FlowState) -> dict[str, Any]:
             if not ambient_satisfied(inp, state)
         }
     )
+
+    # No unmet required input -> nothing to adjudicate; proceed deterministically. Consulting the
+    # LLM here is what caused over-asking: given only a boolean target_child_known (never the
+    # profile contents), it would invent "missing" inputs like age/interests and ask_user, even
+    # though recommend is designed to degrade gracefully on a sparse profile. The LLM only earns a
+    # say when a required input is actually absent (needs non-empty) and might be assumable.
+    if not needs:
+        return {
+            "clarification": ClarificationDecision(decision="continue").model_dump()
+        }
+
     has_child = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))
 
     system = SystemMessage(

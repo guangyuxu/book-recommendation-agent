@@ -82,6 +82,19 @@ class EvaluateState(TypedDict, total=False):
     attempts: int
 
 
+class EvaluateOutput(TypedDict, total=False):
+    """What evaluate writes back: `results` (execute's fan-in) plus the standalone evaluation.
+
+    Explicit output schema, so the subgraph stops re-emitting its mapped input channels
+    (target_child_id / children / policies) -- which would collide at execute's fan-in with a
+    sibling capability subgraph re-emitting the same channels. `evaluation` stays in the output so
+    out-of-graph callers (evals, unit tests) invoking evaluate_subgraph directly still read it.
+    """
+
+    results: Annotated[list[dict[str, dict[str, Any]]], operator.add]
+    evaluation: str
+
+
 def _render_books(books: list[dict[str, Any]]) -> str:
     """Render the named book(s) as a compact block for the prompts."""
     if not books:
@@ -193,7 +206,9 @@ def emit(state: EvaluateState) -> dict[str, Any]:
     return {"results": [{"evaluate": {"evaluation": state.get("evaluation") or ""}}]}
 
 
-_builder = StateGraph(EvaluateState, context_schema=AppContext)
+_builder = StateGraph(
+    EvaluateState, context_schema=AppContext, output_schema=EvaluateOutput
+)
 # prepare/emit make no LLM call; the analyst/critic nodes wrap themselves (like the recommend
 # subgraph nodes) so the billing ContextVar is live when their token-usage callback fires.
 _builder.add_node("prepare", prepare)
