@@ -1,25 +1,19 @@
 """Child Profile domain operations: create a child and update basic / school / notes fields.
 
-Wraps ChildProfileRepository (and seeds the 1:1 ChildReadingProfile on create). Updates act
-on the turn's target child; create_child sets the newly created child as the target so any
-following reading-profile/history operations in the same turn apply to it.
+Calls the accounts internal API (`ctx.client`). create_child also seeds the 1:1 reading profile
+(done by accounts) and sets the newly created child as the turn's target, so any following
+reading-profile/history operations in the same turn apply to it. Updates act on the target child.
 """
 
 from __future__ import annotations
 
-from uuid import uuid4
+from typing import Any
 
 from langchain_core.tools import tool
 
-from ..db import (
-    ChildProfile,
-    ChildProfileRepository,
-    ChildReadingProfile,
-    ChildReadingProfileRepository,
-    Gender,
-)
-from ._util import parse_iso_date
-from .context import DomainContext, current, require_child_id
+from ..db import Gender
+from ._util import iso_date
+from .context import _as_uuid, accounts, cached_child, current, require_child_id
 
 
 @tool
@@ -42,34 +36,24 @@ def create_child(
     apply cleanly. Use when the conversation introduces a child not already on file.
     """
     ctx = current()
-    child = ChildProfile(
-        id=uuid4(),
-        family_id=ctx.family_id,
-        display_name=display_name,
-        aliases=aliases or [],
-        gender=gender,
-        birth_date=parse_iso_date(birth_date),
-        grade=grade,
-        school_system=school_system,
-        country_or_curriculum=country_or_curriculum,
-        primary_language=primary_language,
-        reading_language=reading_language,
-        notes=notes,
-    )
-    ChildProfileRepository(session=ctx.session).add(child)
-    ChildReadingProfileRepository(session=ctx.session).add(
-        ChildReadingProfile(id=uuid4(), child_id=child.id)
-    )
-    ctx.target_child_id = child.id  # subsequent tools this turn target the new child
-    return f"Created child {display_name} ({child.id})."
-
-
-def _target_child(ctx: DomainContext) -> ChildProfile:
-    repo = ChildProfileRepository(session=ctx.session)
-    child = repo.get_one_or_none(id=require_child_id())
-    if child is None:
-        raise RuntimeError("Target child not found in the database.")
-    return child
+    body: dict[str, Any] = {
+        "display_name": display_name,
+        "aliases": aliases or [],
+        "gender": gender.value if gender else None,
+        "birth_date": iso_date(birth_date),
+        "grade": grade,
+        "school_system": school_system,
+        "country_or_curriculum": country_or_curriculum,
+        "primary_language": primary_language,
+        "reading_language": reading_language,
+        "notes": notes,
+    }
+    child = accounts().create_child(ctx.family_id, body)
+    child_id = child["id"]
+    ctx.children[str(child_id)] = {**child, "reading_profile": {}}
+    # subsequent tools this turn target the new child
+    ctx.target_child_id = _as_uuid(child_id)
+    return f"Created child {display_name} ({child_id})."
 
 
 @tool
@@ -86,21 +70,22 @@ def update_child_basic_info(
 
     `birth_date` is an ISO date ('YYYY-MM-DD'); age is derived from it at read time.
     """
-    ctx = current()
-    child = _target_child(ctx)
-    for field, value in (
+    child_id = require_child_id()
+    body: dict[str, Any] = {}
+    for field_name, value in (
         ("display_name", display_name),
         ("aliases", aliases),
-        ("gender", gender),
-        ("birth_date", parse_iso_date(birth_date)),
+        ("gender", gender.value if gender else None),
+        ("birth_date", iso_date(birth_date)),
         ("grade", grade),
         ("primary_language", primary_language),
         ("reading_language", reading_language),
     ):
         if value is not None:
-            setattr(child, field, value)
-    ChildProfileRepository(session=ctx.session).update(child)
-    return f"Updated basic info for child {child.id}."
+            body[field_name] = value
+    updated = accounts().update_child(current().family_id, child_id, body)
+    _refresh_child_cache(child_id, updated)
+    return f"Updated basic info for child {child_id}."
 
 
 @tool
@@ -110,27 +95,39 @@ def update_school_information(
     country_or_curriculum: str | None = None,
 ) -> str:
     """Update the target child's school context (grade, school system, country/curriculum)."""
-    ctx = current()
-    child = _target_child(ctx)
-    for field, value in (
+    child_id = require_child_id()
+    body: dict[str, Any] = {}
+    for field_name, value in (
         ("grade", grade),
         ("school_system", school_system),
         ("country_or_curriculum", country_or_curriculum),
     ):
         if value is not None:
-            setattr(child, field, value)
-    ChildProfileRepository(session=ctx.session).update(child)
-    return f"Updated school information for child {child.id}."
+            body[field_name] = value
+    updated = accounts().update_child(current().family_id, child_id, body)
+    _refresh_child_cache(child_id, updated)
+    return f"Updated school information for child {child_id}."
 
 
 @tool
 def update_child_notes(notes: str, mode: str = "append") -> str:
     """Update the target child's free-text notes. mode is "append" (default) or "replace"."""
-    ctx = current()
-    child = _target_child(ctx)
-    if mode == "append" and child.notes:
-        child.notes = f"{child.notes}\n{notes}"
-    else:
-        child.notes = notes
-    ChildProfileRepository(session=ctx.session).update(child)
-    return f"Updated notes for child {child.id}."
+    child_id = require_child_id()
+    existing = cached_child(child_id).get("notes")
+    new_notes = f"{existing}\n{notes}" if mode == "append" and existing else notes
+    updated = accounts().update_child(
+        current().family_id, child_id, {"notes": new_notes}
+    )
+    _refresh_child_cache(child_id, updated)
+    return f"Updated notes for child {child_id}."
+
+
+def _refresh_child_cache(child_id: object, updated: dict[str, Any]) -> None:
+    """Merge an updated child row back into the turn cache, preserving nested reading_profile."""
+    key = str(child_id)
+    prior = current().children.get(key, {})
+    current().children[key] = {
+        **prior,
+        **updated,
+        "reading_profile": prior.get("reading_profile", {}),
+    }

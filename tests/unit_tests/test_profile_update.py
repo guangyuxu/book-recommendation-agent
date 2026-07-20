@@ -79,7 +79,19 @@ def _install(
         yield SimpleNamespace(session=object(), target_child_id=None)
 
     monkeypatch.setattr(pu_mod, "domain_session", _fake_session)
-    monkeypatch.setattr(pu_mod, "load_family_entities", lambda _s, _fid: ({}, {}))
+
+    # The post-loop refresh re-reads the family context from the accounts API; stub it.
+    bundle = {
+        "family": {"id": FAMILY_ID},
+        "members": [],
+        "children": {},
+        "policies": [],
+    }
+    monkeypatch.setattr(
+        pu_mod,
+        "get_client",
+        lambda: SimpleNamespace(get_context=lambda _fid: bundle),
+    )
 
 
 def _tool_call() -> AIMessage:
@@ -107,7 +119,7 @@ def test_clean_apply_keeps_confirmation_applied(
     )
     # A successful apply does not touch the confirmation channel (respond acknowledges "saved").
     assert "confirmation" not in out
-    assert out["members"] == {} and out["children"] == {}
+    assert out["members"] == [] and out["children"] == {}
 
 
 def test_failed_write_downgrades_confirmation_to_error(

@@ -15,9 +15,9 @@ from uuid import UUID
 from langchain.messages import ToolMessage
 
 from .. import prompts
+from ..accounts_client import get_client
 from ..domain import MEMORY_TOOLS, MEMORY_TOOLS_BY_NAME, domain_session
 from ..llm import STANDARD
-from ..serialize import load_family_entities
 from ..state import FlowState
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,12 @@ def profile_update(state: FlowState) -> dict[str, Any]:
     )
 
     with domain_session(
-        family_id, target, requester_member_id=state.get("family_member_id")
+        family_id,
+        target,
+        requester_member_id=state.get("family_member_id"),
+        children=state.get("children"),
+        members=state.get("members"),
+        policies=state.get("policies"),
     ) as ctx:
         messages = prompts.render(
             "profile_update.apply",
@@ -91,16 +96,25 @@ def profile_update(state: FlowState) -> dict[str, Any]:
                         content = f"Error: {exc}"
                 messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
         new_target = str(ctx.target_child_id) if ctx.target_child_id else None
-        # Re-read inside the still-open session so the frontend syncs same-turn: the writes are
-        # flushed (visible to this transaction) even though the commit happens on block exit.
-        members, children = load_family_entities(ctx.session, UUID(str(family_id)))
+
+    # Re-fetch the family context so the frontend syncs same-turn: each accounts write committed
+    # independently, so a fresh read reflects everything this turn persisted. Falls back to the
+    # turn's starting state if the family somehow can't be read back.
+    bundle = get_client().get_context(UUID(str(family_id)))
+    members = bundle["members"] if bundle else (state.get("members") or [])
+    children = bundle["children"] if bundle else (state.get("children") or {})
+    policies = bundle["policies"] if bundle else (state.get("policies") or [])
 
     # We are confident the writes landed only if the agent ran at least one tool and then stopped
     # on its own with no error in the final batch. Anything else (an unrecovered tool error, or
     # exhausting the iteration budget mid-loop) means we must NOT tell the parent it was saved.
     writes_failed = made_calls and (last_had_error or not stopped_cleanly)
 
-    out: dict[str, Any] = {"members": members, "children": children}
+    out: dict[str, Any] = {
+        "members": members,
+        "children": children,
+        "policies": policies,
+    }
     if new_target and new_target != target:
         out["target_child_id"] = new_target
 

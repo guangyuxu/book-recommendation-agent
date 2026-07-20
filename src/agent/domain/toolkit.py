@@ -1,9 +1,9 @@
 """Curated tool lists for binding to LLM agents.
 
 MEMORY_TOOLS are the domain operations the Profile Update agent may call to persist what
-Memory Policy decided is worth remembering. Recommendation-write tools and create_family are
-deliberately excluded: recommendation persistence is done deterministically by the respond
-node, and families are seeded, not created mid-conversation.
+Memory Policy decided is worth remembering. Recommendation-write tools are deliberately excluded:
+recommendation persistence is done deterministically by the respond node. (Families themselves
+are created at signup by the accounts service, so there is no create-family tool at all.)
 """
 
 from __future__ import annotations

@@ -63,7 +63,7 @@ def session_scope() -> Iterator[Session]:
     one scope per request/turn, build repositories on the yielded session, and let this commit:
 
         with session_scope() as s:
-            FamilyRepository(session=s).add(Family(family_name="..."))
+            RecommendationSessionRepository(session=s).add(RecommendationSession(...))
     """
     session = SessionLocal()
     try:

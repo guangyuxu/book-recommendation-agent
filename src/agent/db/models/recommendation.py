@@ -1,6 +1,9 @@
 """Recommendation domain: a turn's session, its recommended items, and later feedback.
 
-References the family, child, and book domains by FK; owns session -> item -> feedback.
+Owns session -> item -> feedback. References the book cache by FK (a local table). The family /
+child / member it refers to now live in the accounts service, so those are PLAIN UUID columns
+(no cross-service foreign keys, no ORM relationships) -- integrity for them is enforced by the
+accounts service, not the agent DB.
 """
 
 from __future__ import annotations
@@ -9,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Index, Integer, Text, text
+from sqlalchemy import ForeignKey, Index, Integer, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base, JSONType, TextArray
@@ -17,8 +20,6 @@ from ._columns import _created_at, _uuid_pk
 
 if TYPE_CHECKING:
     from .book import BookCache
-    from .child import ChildProfile
-    from .family import Family, FamilyMember
 
 
 class RecommendationSession(Base):
@@ -27,15 +28,10 @@ class RecommendationSession(Base):
     __tablename__ = "recommendation_session"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    family_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("family.id"), nullable=False
-    )
-    requester_member_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("family_member.id")
-    )
-    target_child_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("child_profile.id"), nullable=False
-    )
+    # Accounts-owned identities: plain UUIDs, no FK (the rows live in another service).
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    requester_member_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    target_child_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     intents: Mapped[list[Any]] = mapped_column(JSONType, server_default=text("'[]'"))
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
     understanding: Mapped[dict[str, Any]] = mapped_column(
@@ -51,9 +47,6 @@ class RecommendationSession(Base):
     response_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
-    family: Mapped[Family] = relationship(lazy="selectin")
-    requester: Mapped[FamilyMember | None] = relationship(lazy="selectin")
-    target_child: Mapped[ChildProfile] = relationship(lazy="selectin")
     items: Mapped[list[RecommendationItem]] = relationship(
         back_populates="session", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -107,13 +100,10 @@ class RecommendationFeedback(Base):
     recommendation_item_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recommendation_item.id")
     )
-    family_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("family.id"), nullable=False
-    )
-    child_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("child_profile.id"), nullable=False
-    )
-    member_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("family_member.id"))
+    # Accounts-owned identities: plain UUIDs, no FK (the rows live in another service).
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    child_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    member_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     reaction: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'unknown'")
     )
@@ -123,9 +113,6 @@ class RecommendationFeedback(Base):
 
     session: Mapped[RecommendationSession | None] = relationship(lazy="selectin")
     item: Mapped[RecommendationItem | None] = relationship(lazy="selectin")
-    family: Mapped[Family] = relationship(lazy="selectin")
-    child: Mapped[ChildProfile] = relationship(lazy="selectin")
-    member: Mapped[FamilyMember | None] = relationship(lazy="selectin")
 
     __table_args__ = (
         Index("idx_recommendation_feedback_session_id", "session_id"),

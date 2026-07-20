@@ -63,7 +63,7 @@ def _recording_sinks(calls: list[str]):
     """Swap the node's tool sink + session + re-read for DB-free recorders; always restore."""
     original_tools = pu_mod.MEMORY_TOOLS_BY_NAME
     original_session = pu_mod.domain_session
-    original_reload = pu_mod.load_family_entities
+    original_get_client = pu_mod.get_client
 
     def _make_recorder(name: str) -> SimpleNamespace:
         def _invoke(_args: Any) -> str:
@@ -76,15 +76,17 @@ def _recording_sinks(calls: list[str]):
     def _fake_session(*_args: Any, **_kwargs: Any):
         yield SimpleNamespace(session=object(), target_child_id=None)
 
+    # The post-loop refresh re-reads the family context from the accounts API; stub it.
+    _empty_ctx = {"family": {}, "members": [], "children": {}, "policies": []}
     pu_mod.MEMORY_TOOLS_BY_NAME = {name: _make_recorder(name) for name in _LABELS}
     pu_mod.domain_session = _fake_session
-    pu_mod.load_family_entities = lambda _s, _fid: ({}, {})
+    pu_mod.get_client = lambda: SimpleNamespace(get_context=lambda _fid: _empty_ctx)
     try:
         yield
     finally:
         pu_mod.MEMORY_TOOLS_BY_NAME = original_tools
         pu_mod.domain_session = original_session
-        pu_mod.load_family_entities = original_reload
+        pu_mod.get_client = original_get_client
 
 
 def predict(case: dict) -> dict[str, Any]:
