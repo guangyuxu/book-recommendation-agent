@@ -15,7 +15,6 @@ from .child import (
 from .context import DomainContext, current, domain_session, require_child_id
 from .family import (
     add_family_member,
-    create_family,
     update_family_reading_policy,
     update_member_basic_info,
     update_member_profile,
@@ -50,7 +49,6 @@ __all__ = [
     "MEMORY_TOOLS",
     "MEMORY_TOOLS_BY_NAME",
     # family
-    "create_family",
     "add_family_member",
     "update_member_basic_info",
     "update_member_profile",

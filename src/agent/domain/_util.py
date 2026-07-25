@@ -28,6 +28,16 @@ def parse_iso_date(value: str | None) -> date | None:
         ) from exc
 
 
+def iso_date(value: str | None) -> str | None:
+    """Normalize a tool birth/date arg to a full 'YYYY-MM-DD' string for the accounts API, or None.
+
+    Reuses `parse_iso_date`'s partial-date tolerance ('2015' -> '2015-01-01'), then serializes to
+    ISO so it is JSON-safe (the API parses it back into a DATE column).
+    """
+    parsed = parse_iso_date(value)
+    return parsed.isoformat() if parsed else None
+
+
 def merge_unique(
     existing: Iterable[str] | None, additions: Iterable[str] | None
 ) -> list[str]:

@@ -213,6 +213,45 @@ def test_execute_scratch_does_not_leak_across_turns(monkeypatch) -> None:
     assert set(second["capability_results"]) == {"content"}  # turn 1 did not leak in
 
 
+def test_execute_does_not_clobber_pass_through_channels(monkeypatch) -> None:
+    """execute must write back ONLY capability_results, never its read-only input channels.
+
+    Regression for InvalidUpdateError at 'target_child_id': execute maps target_child_id/children/
+    policies/plan in for the capabilities to read, but must not re-emit them -- otherwise, at the
+    main graph's fan-in, they collide with the parallel memory branch writing target_child_id
+    (profile_update), since those are single-value (LastValue) channels. Mirrors the real
+    execute ∥ memory topology with a sibling node that writes target_child_id.
+    """
+    monkeypatch.setattr(
+        execute_mod,
+        "REGISTRY",
+        {"content": SimpleNamespace(name="content", run=lambda v: {"draft": "x"})},
+    )
+
+    class P(TypedDict, total=False):
+        plan: dict
+        target_child_id: str | None
+        capability_results: dict
+
+    pb = StateGraph(P)
+    pb.add_node("execute", execute_mod.execute_graph)
+    pb.add_node("sibling", lambda s: {"target_child_id": "new-child"})  # like memory
+    pb.add_node("join", lambda s: {})
+    pb.add_edge(START, "execute")
+    pb.add_edge(START, "sibling")
+    pb.add_edge("execute", "join")
+    pb.add_edge("sibling", "join")
+    pb.add_edge("join", END)
+    parent = pb.compile()
+
+    # Must not raise InvalidUpdateError; the sibling's target_child_id write wins uncontested.
+    out = parent.invoke(
+        {"plan": {"steps": [{"capability": "content"}]}, "target_child_id": "old-child"}
+    )
+    assert out["target_child_id"] == "new-child"
+    assert set(out["capability_results"]) == {"content"}
+
+
 # --- planner: intents map to a flat, independent capability list -------------------------
 
 

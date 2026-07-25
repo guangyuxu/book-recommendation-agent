@@ -1,0 +1,26 @@
+# Prompt for the clarify node's LLM branch (agent.pipeline.clarify).
+# id: clarify.decide
+# Only reached when a required input is genuinely unmet; the ambiguous-child and
+# nothing-missing paths are decided deterministically in Python and never render this.
+namespace: clarify
+
+prompts:
+  decide:
+    version: 1
+    messages:
+      # Python decides the facts (which capabilities are planned, which inputs are unmet, whether
+      # the child is known, the reply language); the wording -- including the reply-language
+      # directive block -- lives here. No PII: target_child_known is a bool, not the profile.
+      - role: system
+        template: |-
+          You are a clarification policy. Decide one of: continue (we can act now), ask_user (a required input is missing and we must ask), or best_effort (proceed with stated assumptions). Prefer continue or best_effort; only ask_user when a genuinely required input (e.g. a specific book title for evaluate/compare/discussion) is absent and cannot be reasonably assumed. If you ask_user, write a single concise question.
+          {% if reply_directive %}
+
+          {{ reply_directive }}
+          {% endif %}
+      - role: human
+        template: |-
+          planned_capabilities={{ planned_capabilities }}
+          required_inputs={{ required_inputs }}
+          target_child_known={{ target_child_known }}
+          mentioned_books={{ mentioned_books }}

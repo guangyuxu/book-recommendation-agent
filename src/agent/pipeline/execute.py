@@ -61,6 +61,19 @@ class ExecuteState(TypedDict, total=False):
     results: Annotated[list[dict[str, dict[str, Any]]], operator.add]
 
 
+class ExecuteOutput(TypedDict):
+    """What the execute subgraph writes back to the parent -- ONLY capability_results.
+
+    Without an explicit output schema a subgraph re-emits every mapped input channel it declares
+    (target_child_id / children / policies / plan), which then collides at the parent's fan-in
+    with the memory branch's writes to those same channels (LastValue accepts one write per step
+    -> InvalidUpdateError). Restricting the output to the one channel execute owns keeps the two
+    parallel branches on disjoint channels, as the docstring above intends.
+    """
+
+    capability_results: dict[str, dict[str, Any]]
+
+
 def dispatch(state: ExecuteState) -> dict[str, Any]:
     """Anchor node for the fan-out; the plan is read on the outgoing edge (fan_out)."""
     return {}
@@ -114,7 +127,9 @@ def aggregate(state: ExecuteState) -> dict[str, Any]:
     return {"capability_results": merged}
 
 
-_builder = StateGraph(ExecuteState, context_schema=AppContext)
+_builder = StateGraph(
+    ExecuteState, context_schema=AppContext, output_schema=ExecuteOutput
+)
 _builder.add_node("dispatch", dispatch)
 # One node per capability, dispatched the way the capability declares (registry.Capability):
 #   - graph-backed (e.g. recommend's generate/validate self-critique subgraph): wired in directly

@@ -1,38 +1,32 @@
 """Reading Profile domain operations: ability, interests, genre/theme tastes, summary.
 
-All act on the target child's single ChildReadingProfile row (created on demand if missing).
-Wraps ChildReadingProfileRepository.
+All act on the target child's single reading profile via the accounts internal API. List edits
+(interests, genres, themes, ...) are add/remove merges computed against the turn's cached profile,
+then the full field is sent as a reading-profile upsert; the cache is refreshed from the response.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
-from uuid import uuid4
+from typing import Any
+from uuid import UUID
 
 from langchain_core.tools import tool
 
-from ..db import ChildReadingProfile, ChildReadingProfileRepository
 from ._util import merge_unique, remove_all
-from .context import DomainContext, current, require_child_id
+from .context import accounts, cached_child, current, require_child_id
 
 
-def _profile(
-    ctx: DomainContext,
-) -> tuple[ChildReadingProfile, ChildReadingProfileRepository, bool]:
-    """Return (profile, repo, created) for the target child, creating an empty one if absent."""
-    repo = ChildReadingProfileRepository(session=ctx.session)
-    child_id = require_child_id()
-    profile = repo.get_by_child(child_id)
-    created = profile is None
-    if profile is None:
-        profile = ChildReadingProfile(id=uuid4(), child_id=child_id)
-    return profile, repo, created
+def _cached_profile(child_id: UUID | str) -> dict[str, Any]:
+    """Return the target child's cached reading_profile (for list merges), or {}."""
+    return cached_child(child_id).get("reading_profile") or {}
 
 
-def _persist(
-    profile: ChildReadingProfile, repo: ChildReadingProfileRepository, created: bool
-) -> None:
-    repo.add(profile) if created else repo.update(profile)
+def _upsert(child_id: UUID | str, body: dict[str, Any]) -> None:
+    """Send a reading-profile upsert and refresh the cached profile from the response."""
+    updated = accounts().upsert_reading_profile(current().family_id, child_id, body)
+    key = str(child_id)
+    prior = current().children.get(key, {})
+    current().children[key] = {**prior, "reading_profile": updated}
 
 
 @tool
@@ -50,25 +44,24 @@ def update_reading_ability(
     source: str = "parent_report",
 ) -> str:
     """Update the target child's reading ability (level, CEFR/Lexile/AR, stage, capabilities)."""
-    ctx = current()
-    profile, repo, created = _profile(ctx)
-    for field, value in (
+    child_id = require_child_id()
+    body: dict[str, Any] = {"source": source}
+    for field_name, value in (
         ("reading_level_note", reading_level_note),
         ("cefr_level", cefr_level),
         ("lexile", lexile),
-        ("ar_level", None if ar_level is None else Decimal(str(ar_level))),
+        ("ar_level", ar_level),
         ("current_stage", current_stage),
         ("independent_reading", independent_reading),
         ("needs_dictionary", needs_dictionary),
         ("can_read_chapter_books", can_read_chapter_books),
         ("can_handle_old_language", can_handle_old_language),
-        ("confidence", None if confidence is None else Decimal(str(confidence))),
+        ("confidence", confidence),
     ):
         if value is not None:
-            setattr(profile, field, value)
-    profile.source = source
-    _persist(profile, repo, created)
-    return f"Updated reading ability for child {profile.child_id}."
+            body[field_name] = value
+    _upsert(child_id, body)
+    return f"Updated reading ability for child {child_id}."
 
 
 @tool
@@ -77,13 +70,13 @@ def update_reading_interest(
     remove_interests: list[str] | None = None,
 ) -> str:
     """Add or remove topics the target child is interested in (e.g. dragons, space, sports)."""
-    ctx = current()
-    profile, repo, created = _profile(ctx)
-    profile.interests = remove_all(
-        merge_unique(profile.interests, add_interests), remove_interests
+    child_id = require_child_id()
+    prof = _cached_profile(child_id)
+    interests = remove_all(
+        merge_unique(prof.get("interests"), add_interests), remove_interests
     )
-    _persist(profile, repo, created)
-    return f"Updated interests for child {profile.child_id}."
+    _upsert(child_id, {"interests": interests})
+    return f"Updated interests for child {child_id}."
 
 
 @tool
@@ -94,16 +87,18 @@ def update_genre_preference(
     remove_disliked: list[str] | None = None,
 ) -> str:
     """Update the target child's preferred and disliked genres."""
-    ctx = current()
-    profile, repo, created = _profile(ctx)
-    profile.preferred_genres = remove_all(
-        merge_unique(profile.preferred_genres, add_preferred), remove_preferred
-    )
-    profile.disliked_genres = remove_all(
-        merge_unique(profile.disliked_genres, add_disliked), remove_disliked
-    )
-    _persist(profile, repo, created)
-    return f"Updated genre preferences for child {profile.child_id}."
+    child_id = require_child_id()
+    prof = _cached_profile(child_id)
+    body = {
+        "preferred_genres": remove_all(
+            merge_unique(prof.get("preferred_genres"), add_preferred), remove_preferred
+        ),
+        "disliked_genres": remove_all(
+            merge_unique(prof.get("disliked_genres"), add_disliked), remove_disliked
+        ),
+    }
+    _upsert(child_id, body)
+    return f"Updated genre preferences for child {child_id}."
 
 
 @tool
@@ -114,21 +109,23 @@ def update_theme_tone_preference(
     add_avoid_topics: list[str] | None = None,
 ) -> str:
     """Add to the target child's liked/disliked themes, preferred tone, and topics to avoid."""
-    ctx = current()
-    profile, repo, created = _profile(ctx)
-    profile.liked_themes = merge_unique(profile.liked_themes, add_liked_themes)
-    profile.disliked_themes = merge_unique(profile.disliked_themes, add_disliked_themes)
-    profile.preferred_tone = merge_unique(profile.preferred_tone, add_preferred_tone)
-    profile.avoid_topics = merge_unique(profile.avoid_topics, add_avoid_topics)
-    _persist(profile, repo, created)
-    return f"Updated themes/tone for child {profile.child_id}."
+    child_id = require_child_id()
+    prof = _cached_profile(child_id)
+    body = {
+        "liked_themes": merge_unique(prof.get("liked_themes"), add_liked_themes),
+        "disliked_themes": merge_unique(
+            prof.get("disliked_themes"), add_disliked_themes
+        ),
+        "preferred_tone": merge_unique(prof.get("preferred_tone"), add_preferred_tone),
+        "avoid_topics": merge_unique(prof.get("avoid_topics"), add_avoid_topics),
+    }
+    _upsert(child_id, body)
+    return f"Updated themes/tone for child {child_id}."
 
 
 @tool
 def update_reading_summary(summary: str) -> str:
     """Set a short natural-language summary of the target child's reading profile."""
-    ctx = current()
-    profile, repo, created = _profile(ctx)
-    profile.summary = summary
-    _persist(profile, repo, created)
-    return f"Updated reading summary for child {profile.child_id}."
+    child_id = require_child_id()
+    _upsert(child_id, {"summary": summary})
+    return f"Updated reading summary for child {child_id}."

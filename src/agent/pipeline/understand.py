@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from langchain.messages import SystemMessage
-
+from .. import prompts
 from ..intents import intent_menu
 from ..language import normalize_language
 from ..llm import STANDARD
@@ -92,36 +91,14 @@ def _roster(children: dict[str, dict[str, Any]]) -> str:
 def understand(state: FlowState) -> dict[str, Any]:
     """Read the latest message into a structured Understanding and resolve the target child."""
     children = state.get("children") or {}
-    system = SystemMessage(
-        content=(
-            "You read a parent's message about books for their child and return a structured "
-            "understanding. Do NOT solve anything here.\n\n"
-            "List EVERY intent that genuinely, independently applies to this message in "
-            "`intents` (a single message may carry several -- e.g. recommend books AND ask for "
-            "discussion questions AND request a social post). Order by prominence. Add an intent "
-            "only for a real, distinct request; leave `intents` empty if nothing is actionable. "
-            "Intents:\n"
-            f"{intent_menu()}\n\n"
-            "PROFILE/GOAL FACTS vs. TASKS: child_profile_update, parent_profile_update, and "
-            "parent_goal_update are for messages whose POINT is to state/update a fact about the "
-            "child, the parent, or a goal. When the message also asks for an actionable task "
-            "(recommend / evaluate / compare / path / discussion / content), any profile or goal "
-            "fact in it is just supporting context -- record it in user_signals and do NOT add a "
-            "*_update intent for it. Emit a *_update intent ONLY when stating that fact is the "
-            "whole message, with no other actionable request. Profile/goal facts always go into "
-            "user_signals regardless of which intents you list.\n\n"
-            "In child_ref, report which child THE MESSAGE points to -- evidence only. Do NOT "
-            "consider any 'currently selected' child; report only what the message says. Use "
-            "the roster below: status='matched' + child_id=<exact roster id> when the message "
-            "clearly refers to a specific listed child; status='new' when it describes a child "
-            "not on the roster; status='ambiguous' when it refers to a child but which one is "
-            "unclear; status='none' when it does not single out any child. Also extract "
-            "mentioned_books and user_signals (profile-relevant facts).\n\n"
-            f"Children roster:\n{_roster(children)}"
-        )
+    system = prompts.render(
+        "understand.read", intent_menu=intent_menu(), roster=_roster(children)
     )
     understanding = cast(
-        Understanding, _structured.invoke([system, *state["messages"]])
+        Understanding,
+        _structured.invoke(
+            [*system, *state["messages"]], config=prompts.config("understand.read")
+        ),
     )
 
     # Deterministic reconciliation: explicit message reference wins over the pinned child;

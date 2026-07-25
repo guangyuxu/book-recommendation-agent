@@ -6,8 +6,9 @@ Three strategies map to three Claude capability tiers:
                                discussion, path, content):    sonnet → haiku → opus
   FAST     – speed-first     (clarify, memory-policy):        haiku → sonnet → opus
 
-Each strategy exposes three methods:
+Each strategy exposes four methods:
   .chain()            – plain invoke chain (for single-shot LLM calls)
+  .stream_chain()     – plain chain on streaming-enabled models (token-by-token .stream())
   .structured(schema) – per-model with_structured_output() chain with fallbacks
   .tools(tools)       – per-model bind_tools() chain with fallbacks
 
@@ -31,15 +32,23 @@ from .usage_tracker import UsageCallbackHandler
 # ── Individual models ─────────────────────────────────────────────────────────
 # max_retries=2: the Anthropic SDK retries 429/5xx/connection errors with exponential
 # backoff. Strategy fallbacks activate when a model exhausts its own retries.
-# disable_streaming: avoids "No generations found in stream." on structured-output calls.
+# disable_streaming: avoids "No generations found in stream." on structured-output calls,
+# so the plain/structured/tools models keep it on. The reply chain (stream_chain, used by
+# `respond`) needs the opposite -- streaming-enabled models -- to emit tokens as they arrive;
+# ChatAnthropic keeps stream_usage=True by default, so on_llm_end still sees usage_metadata on
+# a streamed call and token accounting is unaffected.
 
-_COMMON: dict[str, Any] = dict(
-    temperature=0, max_retries=2, timeout=60, disable_streaming=True
-)
+_COMMON: dict[str, Any] = dict(temperature=0, max_retries=2, timeout=60)
+_NOSTREAM: dict[str, Any] = {**_COMMON, "disable_streaming": True}
 
-_opus = init_chat_model("claude-opus-4-6", **_COMMON)
-_sonnet = init_chat_model("claude-sonnet-4-6", **_COMMON)
-_haiku = init_chat_model("claude-haiku-4-5-20251001", **_COMMON)
+_opus = init_chat_model("claude-opus-4-6", **_NOSTREAM)
+_sonnet = init_chat_model("claude-sonnet-4-6", **_NOSTREAM)
+_haiku = init_chat_model("claude-haiku-4-5-20251001", **_NOSTREAM)
+
+# Streaming-enabled twins, used only by stream_chain() for token-by-token replies.
+_opus_stream = init_chat_model("claude-opus-4-6", **_COMMON)
+_sonnet_stream = init_chat_model("claude-sonnet-4-6", **_COMMON)
+_haiku_stream = init_chat_model("claude-haiku-4-5-20251001", **_COMMON)
 
 _handler = UsageCallbackHandler()
 
@@ -58,6 +67,10 @@ class Strategy:
         # plain invoke (run_text and similar)
         reply = MY_STRATEGY.chain().invoke([system, *messages])
 
+        # streamed reply (respond): tokens arrive as they are generated
+        for chunk in MY_STRATEGY.stream_chain().stream([system, *messages]):
+            ...
+
         # structured output
         _chain = MY_STRATEGY.structured(MySchema)
         result = cast(MySchema, _chain.invoke([...]))
@@ -70,15 +83,18 @@ class Strategy:
     def __init__(
         self,
         name: str,
-        primary: BaseChatModel,
-        secondary: BaseChatModel,
-        tertiary: BaseChatModel,
+        models: tuple[BaseChatModel, BaseChatModel, BaseChatModel],
+        stream_models: tuple[BaseChatModel, BaseChatModel, BaseChatModel],
     ) -> None:
         self.name = name
-        self._primary = primary
-        self._secondary = secondary
-        self._tertiary = tertiary
-        self._invoke_chain: Any = primary.with_fallbacks([secondary, tertiary])
+        self._primary, self._secondary, self._tertiary = models
+        self._invoke_chain: Any = self._primary.with_fallbacks(
+            [self._secondary, self._tertiary]
+        )
+        # Streaming twins share the same primary→secondary→tertiary fallback order.
+        self._stream_chain: Any = stream_models[0].with_fallbacks(
+            list(stream_models[1:])
+        )
 
     def _models(self) -> tuple[BaseChatModel, BaseChatModel, BaseChatModel]:
         return (self._primary, self._secondary, self._tertiary)
@@ -94,6 +110,10 @@ class Strategy:
         """Plain invoke chain with usage tracking."""
         return self._with_tracking(self._invoke_chain)
 
+    def stream_chain(self) -> Any:
+        """Streaming plain chain with usage tracking (token-by-token `.stream()`)."""
+        return self._with_tracking(self._stream_chain)
+
     def structured(self, schema: type) -> Any:
         """Structured-output chain with usage tracking."""
         chains = [m.with_structured_output(schema) for m in self._models()]
@@ -108,8 +128,18 @@ class Strategy:
 
 # ── Strategies ────────────────────────────────────────────────────────────────
 
-HEAVY = Strategy("HEAVY", _opus, _sonnet, _haiku)  # recommend, evaluate, compare
+HEAVY = Strategy(
+    "HEAVY",
+    (_opus, _sonnet, _haiku),
+    (_opus_stream, _sonnet_stream, _haiku_stream),
+)  # recommend, evaluate, compare
 STANDARD = Strategy(
-    "STANDARD", _sonnet, _haiku, _opus
+    "STANDARD",
+    (_sonnet, _haiku, _opus),
+    (_sonnet_stream, _haiku_stream, _opus_stream),
 )  # understand, respond, memory, discussion, path, content
-FAST = Strategy("FAST", _haiku, _sonnet, _opus)  # clarify, memory-policy
+FAST = Strategy(
+    "FAST",
+    (_haiku, _sonnet, _opus),
+    (_haiku_stream, _sonnet_stream, _opus_stream),
+)  # clarify, memory-policy

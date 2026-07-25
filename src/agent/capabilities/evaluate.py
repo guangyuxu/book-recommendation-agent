@@ -32,10 +32,11 @@ import logging
 import operator
 from typing import Annotated, Any, TypedDict, cast
 
-from langchain.messages import AnyMessage, SystemMessage
+from langchain.messages import AnyMessage
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
+from .. import prompts
 from ..llm import HEAVY
 from ..state import AppContext
 from ..usage_tracker import with_turn_context
@@ -82,6 +83,19 @@ class EvaluateState(TypedDict, total=False):
     attempts: int
 
 
+class EvaluateOutput(TypedDict, total=False):
+    """What evaluate writes back: `results` (execute's fan-in) plus the standalone evaluation.
+
+    Explicit output schema, so the subgraph stops re-emitting its mapped input channels
+    (target_child_id / children / policies) -- which would collide at execute's fan-in with a
+    sibling capability subgraph re-emitting the same channels. `evaluation` stays in the output so
+    out-of-graph callers (evals, unit tests) invoking evaluate_subgraph directly still read it.
+    """
+
+    results: Annotated[list[dict[str, dict[str, Any]]], operator.add]
+    evaluation: str
+
+
 def _render_books(books: list[dict[str, Any]]) -> str:
     """Render the named book(s) as a compact block for the prompts."""
     if not books:
@@ -93,18 +107,6 @@ def _render_books(books: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _retry_directive(feedback: list[str]) -> str:
-    """Fold the reviewer's gaps into a revise instruction for the next analyst pass."""
-    if not feedback:
-        return ""
-    joined = "\n".join(f"- {issue}" for issue in feedback)
-    return (
-        "\n\nA reviewer found these gaps in your previous evaluation:\n"
-        f"{joined}\n"
-        "Revise your evaluation to address every gap."
-    )
-
-
 def prepare(state: EvaluateState) -> dict[str, Any]:
     """Assemble the inputs (no LLM): the book(s) the user named this turn, and reset the loop."""
     books = mentioned_books(cast("dict[str, Any]", state))
@@ -114,20 +116,18 @@ def prepare(state: EvaluateState) -> dict[str, Any]:
 def evaluate(state: EvaluateState) -> dict[str, Any]:
     """LLM analyst: assess the named book's fit for the child (carrying any reviewer feedback)."""
     ctx = cast("dict[str, Any]", state)
-    system = SystemMessage(
-        content=(
-            "You are a children's-book analyst. The user named a book. Evaluate whether it suits "
-            "this child: its themes, values, reading difficulty, and any content to be aware of. "
-            "Be concrete and balanced -- name both strengths and cautions, and tie the judgment "
-            "to the child's reading level, interests, and the family's policies.\n\n"
-            f"Book(s) under evaluation:\n{_render_books(state.get('books') or [])}\n\n"
-            f"Target child profile:\n{child_brief(ctx)}\n\n"
-            f"Family reading policies:\n{policies_brief(ctx)}"
-            f"{_retry_directive(state.get('feedback') or [])}"
-        )
+    system = prompts.render(
+        "evaluate.analyze",
+        books=_render_books(state.get("books") or []),
+        child_brief=child_brief(ctx),
+        policies_brief=policies_brief(ctx),
+        feedback=state.get("feedback") or [],
     )
     try:
-        reply = _analyst.invoke([system, *(state.get("messages") or [])])
+        reply = _analyst.invoke(
+            [*system, *(state.get("messages") or [])],
+            config=prompts.config("evaluate.analyze"),
+        )
         text = str(reply.content)
     except Exception as exc:  # degrade rather than sink the turn
         logger.warning("evaluate.evaluate failed: %s", type(exc).__name__)
@@ -146,23 +146,20 @@ def validate(state: EvaluateState) -> dict[str, Any]:
         return {"feedback": ["The evaluation was empty."]}
 
     ctx = cast("dict[str, Any]", state)
-    system = SystemMessage(
-        content=(
-            "You are a strict editor reviewing a children's-book evaluation BEFORE the parent "
-            "sees it. Judge whether it: names the specific book; covers themes, values, and "
-            "reading difficulty; flags any content to be aware of; stays balanced (not one-"
-            "sided); and ties its judgment to this child's level/interests and the family's "
-            "policies. If any of these is missing or unsupported it is NOT ok -- list the "
-            "concrete gaps.\n\n"
-            f"Book(s) under evaluation:\n{_render_books(state.get('books') or [])}\n\n"
-            f"Target child profile:\n{child_brief(ctx)}\n\n"
-            f"Family reading policies:\n{policies_brief(ctx)}\n\n"
-            f"Evaluation to review:\n{text}"
-        )
+    system = prompts.render(
+        "evaluate.validate",
+        books=_render_books(state.get("books") or []),
+        child_brief=child_brief(ctx),
+        policies_brief=policies_brief(ctx),
+        evaluation=text,
     )
     try:
         critique = cast(
-            Critique, _critic.invoke([system, *(state.get("messages") or [])])
+            Critique,
+            _critic.invoke(
+                [*system, *(state.get("messages") or [])],
+                config=prompts.config("evaluate.validate"),
+            ),
         )
     except Exception as exc:  # review unavailable -> accept the evaluation as-is
         logger.warning("evaluate.validate failed: %s", type(exc).__name__)
@@ -193,7 +190,9 @@ def emit(state: EvaluateState) -> dict[str, Any]:
     return {"results": [{"evaluate": {"evaluation": state.get("evaluation") or ""}}]}
 
 
-_builder = StateGraph(EvaluateState, context_schema=AppContext)
+_builder = StateGraph(
+    EvaluateState, context_schema=AppContext, output_schema=EvaluateOutput
+)
 # prepare/emit make no LLM call; the analyst/critic nodes wrap themselves (like the recommend
 # subgraph nodes) so the billing ContextVar is live when their token-usage callback fires.
 _builder.add_node("prepare", prepare)

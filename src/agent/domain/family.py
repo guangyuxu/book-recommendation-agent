@@ -1,42 +1,22 @@
 """Family domain operations: members and reading policy.
 
-Tools wrap FamilyRepository / FamilyMemberRepository / FamilyReadingPolicyRepository. The
-family is always the one bound for the turn (context.current().family_id) -- never an id the
-caller passes.
+Calls the accounts internal API (`ctx.client`). The family is always the one bound for the turn
+(context.current().family_id) -- never an id the caller passes. Member/profile/policy list edits
+are merged against the turn's cached bundle, then the full field is sent to the API.
+
+Family creation is NOT here: families are created at signup by the accounts service, so there is
+no internal create-family endpoint.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
-from uuid import uuid4
 
 from langchain_core.tools import tool
 
-from ..db import (
-    Family,
-    FamilyMember,
-    FamilyMemberProfile,
-    FamilyMemberProfileRepository,
-    FamilyMemberRepository,
-    FamilyReadingPolicy,
-    FamilyReadingPolicyRepository,
-    FamilyRepository,
-    Gender,
-)
-from ._util import merge_unique, parse_iso_date, remove_all
-from .context import current, require_member_id
-
-
-@tool
-def create_family(family_name: str | None = None, default_language: str = "en") -> str:
-    """Create a new family (household). For seeding/tests; not used in normal turns."""
-    ctx = current()
-    family = Family(
-        id=uuid4(), family_name=family_name, default_language=default_language
-    )
-    FamilyRepository(session=ctx.session).add(family)
-    return f"Created family {family.id}."
+from ..db import Gender
+from ._util import iso_date, merge_unique, remove_all
+from .context import accounts, cached_member, current, require_member_id
 
 
 @tool
@@ -55,18 +35,20 @@ def add_family_member(
     identity; conversation-extracted background goes to update_member_profile.
     """
     ctx = current()
-    member = FamilyMember(
-        id=uuid4(),
-        family_id=ctx.family_id,
-        role=role,
-        display_name=display_name,
-        gender=gender,
-        birth_date=parse_iso_date(birth_date),
-        is_primary_user=is_primary_user,
-        language_preference=language_preference,
-    )
-    FamilyMemberRepository(session=ctx.session).add(member)
-    return f"Added family member {display_name or role} ({member.id})."
+    body: dict[str, Any] = {"role": role}
+    for field_name, value in (
+        ("display_name", display_name),
+        ("gender", gender.value if gender else None),
+        ("birth_date", iso_date(birth_date)),
+        ("language_preference", language_preference),
+    ):
+        if value is not None:
+            body[field_name] = value
+    # is_primary_user is set at signup, not by the agent; the internal create endpoint does not
+    # accept it, so it is intentionally omitted from the request body.
+    member = accounts().create_member(ctx.family_id, body)
+    ctx.members.append({**member, "profile": {}})
+    return f"Added family member {display_name or role} ({member['id']})."
 
 
 @tool
@@ -83,22 +65,20 @@ def update_member_basic_info(
     date ('YYYY-MM-DD'); age is derived from it at read time. Only provided fields change.
     Conversation-extracted background (occupation, style, concerns) goes to update_member_profile.
     """
-    ctx = current()
-    repo = FamilyMemberRepository(session=ctx.session)
-    member = repo.get_one_or_none(id=require_member_id())
-    if member is None:
-        raise RuntimeError("Requesting member not found in the database.")
-    for field, value in (
+    member_id = require_member_id()
+    body: dict[str, Any] = {}
+    for field_name, value in (
         ("display_name", display_name),
-        ("gender", gender),
-        ("birth_date", parse_iso_date(birth_date)),
+        ("gender", gender.value if gender else None),
+        ("birth_date", iso_date(birth_date)),
         ("role", role),
         ("language_preference", language_preference),
     ):
         if value is not None:
-            setattr(member, field, value)
-    repo.update(member)
-    return f"Updated basic info for member {member.id}."
+            body[field_name] = value
+    updated = accounts().update_member(current().family_id, member_id, body)
+    _refresh_member_cache(member_id, updated)
+    return f"Updated basic info for member {member_id}."
 
 
 @tool
@@ -116,26 +96,22 @@ def update_member_profile(
     Acts on the turn's requester (the parent/caregiver who is asking); creates their profile on
     demand. Concerns are merged into the existing list, deduped.
     """
-    ctx = current()
-    repo = FamilyMemberProfileRepository(session=ctx.session)
     member_id = require_member_id()
-    profile = repo.get_by_member(member_id)
-    created = profile is None
-    if profile is None:
-        profile = FamilyMemberProfile(id=uuid4(), member_id=member_id)
-    for field, value in (
+    prior_profile = cached_member(member_id).get("profile") or {}
+    body: dict[str, Any] = {"source": source}
+    for field_name, value in (
         ("occupation_background", occupation_background),
         ("education_background", education_background),
         ("communication_style", communication_style),
-        ("confidence", None if confidence is None else Decimal(str(confidence))),
+        ("confidence", confidence),
     ):
         if value is not None:
-            setattr(profile, field, value)
-    profile.concerns = remove_all(
-        merge_unique(profile.concerns, add_concerns), remove_concerns
+            body[field_name] = value
+    body["concerns"] = remove_all(
+        merge_unique(prior_profile.get("concerns"), add_concerns), remove_concerns
     )
-    profile.source = source
-    repo.add(profile) if created else repo.update(profile)
+    updated = accounts().upsert_member_profile(current().family_id, member_id, body)
+    _set_member_profile_cache(member_id, updated)
     return f"Updated member profile for {member_id}."
 
 
@@ -154,34 +130,72 @@ def update_family_reading_policy(
     family-wide policy. Array fields are merged into the existing active policy, deduped.
     """
     ctx = current()
-    repo = FamilyReadingPolicyRepository(session=ctx.session)
     child_id = ctx.target_child_id if child_scoped else None
-    policy = repo.get_one_or_none(
-        family_id=ctx.family_id, child_id=child_id, is_active=True
-    )
-    if policy is None:
-        policy = FamilyReadingPolicy(
-            id=uuid4(),
-            family_id=ctx.family_id,
-            child_id=child_id,
-            goals=goals or [],
-            constraints=constraints or [],
-            avoid_topics=avoid_topics or [],
-            content_preferences=content_preferences or {},
-            notes=notes,
-        )
-        repo.add(policy)
-    else:
-        policy.goals = merge_unique(policy.goals, goals)
-        policy.constraints = merge_unique(policy.constraints, constraints)
-        policy.avoid_topics = merge_unique(policy.avoid_topics, avoid_topics)
-        if content_preferences:
-            policy.content_preferences = {
-                **(policy.content_preferences or {}),
-                **content_preferences,
-            }
-        if notes is not None:
-            policy.notes = notes
-        repo.update(policy)
+    existing = _active_policy(child_id)
+    if existing is None:
+        body: dict[str, Any] = {
+            "child_id": str(child_id) if child_id else None,
+            "goals": goals or [],
+            "constraints": constraints or [],
+            "avoid_topics": avoid_topics or [],
+            "content_preferences": content_preferences or {},
+            "notes": notes,
+        }
+        created = accounts().create_policy(ctx.family_id, body)
+        ctx.policies.append(created)
+        scope = "child" if child_scoped else "family"
+        return f"Updated {scope} reading policy ({created['id']})."
+
+    body = {
+        "goals": merge_unique(existing.get("goals"), goals),
+        "constraints": merge_unique(existing.get("constraints"), constraints),
+        "avoid_topics": merge_unique(existing.get("avoid_topics"), avoid_topics),
+    }
+    if content_preferences:
+        body["content_preferences"] = {
+            **(existing.get("content_preferences") or {}),
+            **content_preferences,
+        }
+    if notes is not None:
+        body["notes"] = notes
+    updated = accounts().update_policy(ctx.family_id, existing["id"], body)
+    _replace_policy_cache(updated)
     scope = "child" if child_scoped else "family"
-    return f"Updated {scope} reading policy ({policy.id})."
+    return f"Updated {scope} reading policy ({updated['id']})."
+
+
+def _active_policy(child_id: object) -> dict[str, Any] | None:
+    """Return the turn's active policy for the scope (child id or family-wide None), from cache."""
+    want = str(child_id) if child_id is not None else None
+    for p in current().policies:
+        pc = p.get("child_id")
+        pc = str(pc) if pc is not None else None
+        if p.get("is_active", True) and pc == want:
+            return p
+    return None
+
+
+def _refresh_member_cache(member_id: object, updated: dict[str, Any]) -> None:
+    key = str(member_id)
+    for i, m in enumerate(current().members):
+        if str(m.get("id")) == key:
+            current().members[i] = {**m, **updated, "profile": m.get("profile", {})}
+            return
+    current().members.append({**updated, "profile": {}})
+
+
+def _set_member_profile_cache(member_id: object, profile: dict[str, Any]) -> None:
+    key = str(member_id)
+    for m in current().members:
+        if str(m.get("id")) == key:
+            m["profile"] = profile
+            return
+    current().members.append({"id": key, "profile": profile})
+
+
+def _replace_policy_cache(updated: dict[str, Any]) -> None:
+    for i, p in enumerate(current().policies):
+        if str(p.get("id")) == str(updated.get("id")):
+            current().policies[i] = updated
+            return
+    current().policies.append(updated)

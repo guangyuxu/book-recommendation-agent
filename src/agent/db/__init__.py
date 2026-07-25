@@ -1,4 +1,8 @@
-"""Database layer: engine/session/config (from .env), ORM models, and per-domain repositories."""
+"""Database layer: engine/session/config (from .env), ORM models, and per-domain repositories.
+
+Scope is the agent-owned tables only (book cache, recommendation, token usage). The family /
+child / reading tables moved to the accounts service; reach them via `agent.accounts_client`.
+"""
 
 from .base import (
     Base,
@@ -11,14 +15,7 @@ from .base import (
 )
 from .models import (
     BookCache,
-    ChildProfile,
-    ChildReadingProfile,
-    Family,
-    FamilyMember,
-    FamilyMemberProfile,
-    FamilyReadingPolicy,
     Gender,
-    ReadingHistory,
     RecommendationFeedback,
     RecommendationItem,
     RecommendationSession,
@@ -26,13 +23,6 @@ from .models import (
 )
 from .repositories import (
     BookCacheRepository,
-    ChildProfileRepository,
-    ChildReadingProfileRepository,
-    FamilyMemberProfileRepository,
-    FamilyMemberRepository,
-    FamilyReadingPolicyRepository,
-    FamilyRepository,
-    ReadingHistoryRepository,
     RecommendationFeedbackRepository,
     RecommendationItemRepository,
     RecommendationSessionRepository,
@@ -51,26 +41,12 @@ __all__ = [
     # shared value types
     "Gender",
     # models
-    "Family",
-    "FamilyMember",
-    "FamilyMemberProfile",
-    "ChildProfile",
-    "ChildReadingProfile",
-    "FamilyReadingPolicy",
-    "ReadingHistory",
     "BookCache",
     "RecommendationSession",
     "RecommendationItem",
     "RecommendationFeedback",
     "TokenUsageRecord",
     # repositories
-    "FamilyRepository",
-    "FamilyMemberRepository",
-    "FamilyMemberProfileRepository",
-    "ChildProfileRepository",
-    "ChildReadingProfileRepository",
-    "FamilyReadingPolicyRepository",
-    "ReadingHistoryRepository",
     "BookCacheRepository",
     "RecommendationSessionRepository",
     "RecommendationItemRepository",

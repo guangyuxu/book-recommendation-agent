@@ -34,10 +34,11 @@ import logging
 import operator
 from typing import Annotated, Any, TypedDict, cast
 
-from langchain.messages import AnyMessage, SystemMessage
+from langchain.messages import AnyMessage
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
+from .. import prompts
 from ..llm import HEAVY
 from ..state import AppContext
 from ..usage_tracker import with_turn_context
@@ -108,35 +109,36 @@ class RecommendState(TypedDict, total=False):
     attempts: int
 
 
-def _retry_directive(feedback: list[str]) -> str:
-    """Fold the previous round's rejection reasons into a fresh-attempt instruction."""
-    if not feedback:
-        return ""
-    joined = "\n".join(f"- {reason}" for reason in feedback)
-    return (
-        "\n\nYour previous suggestions were ALL rejected in screening for these reasons:\n"
-        f"{joined}\n"
-        "Propose a completely fresh list that avoids every issue above."
-    )
+class RecommendOutput(TypedDict, total=False):
+    """What recommend writes back: `results` (execute's fan-in) plus the standalone booklist.
+
+    An explicit output schema stops the subgraph from re-emitting its mapped input channels
+    (target_child_id / children / policies), which would collide at execute's fan-in with a
+    sibling capability subgraph that also re-emits them. `books`/`note` stay in the output so
+    out-of-graph callers (evals, unit tests) that invoke recommend_graph directly still read them.
+    """
+
+    results: Annotated[list[dict[str, dict[str, Any]]], operator.add]
+    books: list[dict[str, Any]]
+    note: str | None
 
 
 def generate(state: RecommendState) -> dict[str, Any]:
     """Propose a fresh ranked booklist (incorporating any prior rejection feedback)."""
     ctx = cast("dict[str, Any]", state)
-    system = SystemMessage(
-        content=(
-            "You are a children's-book recommendation expert. Recommend English books that "
-            "fit this child's reading level, interests, and the family's goals/constraints. "
-            "Rank them best-first, give a concrete reason per book, and flag any content "
-            "risks. Recommend 3-5 books.\n\n"
-            f"Target child profile:\n{child_brief(ctx)}\n\n"
-            f"Family reading policies:\n{policies_brief(ctx)}"
-            f"{_retry_directive(state.get('feedback') or [])}"
-        )
+    system = prompts.render(
+        "recommend.generate",
+        child_brief=child_brief(ctx),
+        policies_brief=policies_brief(ctx),
+        feedback=state.get("feedback") or [],
     )
     try:
         result = cast(
-            Booklist, _generate.invoke([system, *(state.get("messages") or [])])
+            Booklist,
+            _generate.invoke(
+                [*system, *(state.get("messages") or [])],
+                config=prompts.config("recommend.generate"),
+            ),
         )
         dump = result.model_dump()
     except Exception as exc:  # degrade rather than sink the turn
@@ -171,25 +173,19 @@ def validate(state: RecommendState) -> dict[str, Any]:
         return {"feedback": ["The generator returned no books."]}
 
     ctx = cast("dict[str, Any]", state)
-    system = SystemMessage(
-        content=(
-            "You are a strict reviewer screening a proposed children's booklist BEFORE it "
-            "reaches the parent. For EACH book, decide keep or reject based ONLY on whether it "
-            "fits:\n"
-            "- the child's reading level / age / language,\n"
-            "- the child's interests and preferred genres (and does not hit a disliked genre "
-            "or an avoid-topic),\n"
-            "- the family's goals and constraints, and never touches a family avoid-topic.\n"
-            "Reject anything off-level, off-interest, or that violates a constraint/avoid-topic. "
-            "Give one concrete reason per verdict, and return a verdict for every listed book.\n\n"
-            f"Target child profile:\n{child_brief(ctx)}\n\n"
-            f"Family reading policies:\n{policies_brief(ctx)}\n\n"
-            f"Proposed booklist:\n{_render_candidates(books)}"
-        )
+    system = prompts.render(
+        "recommend.validate",
+        child_brief=child_brief(ctx),
+        policies_brief=policies_brief(ctx),
+        candidates=_render_candidates(books),
     )
     try:
         screening = cast(
-            Screening, _screen.invoke([system, *(state.get("messages") or [])])
+            Screening,
+            _screen.invoke(
+                [*system, *(state.get("messages") or [])],
+                config=prompts.config("recommend.validate"),
+            ),
         )
         verdicts = screening.verdicts
     except Exception as exc:  # screening unavailable -> keep the proposed list as-is
@@ -232,7 +228,9 @@ def emit(state: RecommendState) -> dict[str, Any]:
     return {"results": [{"recommend": booklist}]}
 
 
-_builder = StateGraph(RecommendState, context_schema=AppContext)
+_builder = StateGraph(
+    RecommendState, context_schema=AppContext, output_schema=RecommendOutput
+)
 # The LLM-invoking nodes wrap themselves (like the memory/execute subgraph nodes) so the billing
 # ContextVar is live when their token-usage callback fires; emit makes no LLM call.
 _builder.add_node("generate", with_turn_context(generate))

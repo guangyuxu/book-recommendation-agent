@@ -33,7 +33,7 @@ class _FakeChain:
         self._responses = responses
         self.calls = 0
 
-    def invoke(self, _messages: Any) -> Any:
+    def invoke(self, _messages: Any, **_kwargs: Any) -> Any:
         response = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return response

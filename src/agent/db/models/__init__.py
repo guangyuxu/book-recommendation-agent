@@ -1,17 +1,20 @@
-"""ORM models for the book_agent schema (11 tables), hand-written to mirror the live DB.
+"""ORM models for the agent-owned tables in the book_agent schema, hand-written to mirror the DB.
+
+The family / member / child / reading-profile / reading-history / policy tables moved to the
+accounts service, which is now their single owner; the agent reaches them over the internal API
+(see `agent.accounts_client`), not the ORM. What remains here is what the agent still owns
+directly: the book cache, the recommendation turn (session -> item, feedback), and token billing.
 
 Split by domain, one module each; this package re-exports every model so existing
-`from agent.db.models import X` (and `from ..models import X` in repositories) keep working,
-and so importing the package registers all classes on Base.metadata.
+`from agent.db.models import X` keep working, and importing the package registers all classes on
+Base.metadata.
 
 Domains:
-- family:          family -> family_member -> family_member_profile (1:1),
-                   family_reading_policy
-- child:           child_profile -> child_reading_profile (1:1)
-- reading:         reading_history
 - book (catalog):  book_cache
 - recommendation:  recommendation_session -> recommendation_item, recommendation_feedback
 - billing:         token_usage_record
+
+`Gender` (a shared value type used by the domain tools' signatures) still lives in `._columns`.
 
 Conventions shared by every table (see ._columns):
 - UUID primary key, generated server-side via gen_random_uuid().
@@ -19,16 +22,14 @@ Conventions shared by every table (see ._columns):
   ORM-side via onupdate so writes through the ORM keep it fresh.
 - text[] columns use TextArray and default to an empty array; JSONB columns default to {}.
 
-Tables already exist in the DB; create_all is only a local/dev fallback (see base.init_db).
+The recommendation tables carry family_id / child_id / member_id as PLAIN UUID columns (no FK):
+the referenced rows live in the accounts service, so cross-service foreign keys are not possible.
 """
 
 from __future__ import annotations
 
 from ._columns import Gender
 from .book import BookCache
-from .child import ChildProfile, ChildReadingProfile
-from .family import Family, FamilyMember, FamilyMemberProfile, FamilyReadingPolicy
-from .reading import ReadingHistory
 from .recommendation import (
     RecommendationFeedback,
     RecommendationItem,
@@ -39,16 +40,6 @@ from .token_usage import TokenUsageRecord
 __all__ = [
     # shared value types
     "Gender",
-    # family
-    "Family",
-    "FamilyMember",
-    "FamilyMemberProfile",
-    "FamilyReadingPolicy",
-    # child
-    "ChildProfile",
-    "ChildReadingProfile",
-    # reading
-    "ReadingHistory",
     # book
     "BookCache",
     # recommendation

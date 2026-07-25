@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Integer, Text
+from sqlalchemy import Index, Integer, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base
@@ -30,17 +30,12 @@ class TokenUsageRecord(Base):
     __tablename__ = "token_usage_record"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    family_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("family.id"), nullable=False
-    )
+    # Accounts-owned identities: plain UUIDs, no FK (the rows live in another service).
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     turn_id: Mapped[str] = mapped_column(Text, nullable=False)
     thread_id: Mapped[str | None] = mapped_column(Text)
-    family_member_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("family_member.id")
-    )
-    target_child_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("child_profile.id")
-    )
+    family_member_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    target_child_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     model_id: Mapped[str] = mapped_column(Text, nullable=False)
     strategy: Mapped[str] = mapped_column(Text, nullable=False)
     node: Mapped[str] = mapped_column(Text, nullable=False)

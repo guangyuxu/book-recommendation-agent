@@ -2,7 +2,10 @@
   "$schema": "https://langgra.ph/schema.json",
   "dependencies": ["."],
   "graphs": {
-    "agent": "agent.graph:graph"
+    "gavin.book-recommendation.agent": "agent.graph:graph"
+  },
+  "http": {
+    "app": "agent.webapp:app"
   },
   "env": ".env",
   "python_version": "3.13"

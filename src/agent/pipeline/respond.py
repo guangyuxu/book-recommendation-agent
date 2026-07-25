@@ -8,10 +8,12 @@ recommendation turns (a recommend result with a booklist and a resolved child) -
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import Any
 
-from langchain.messages import AIMessage, SystemMessage
+from langchain.messages import AIMessage
 
+from .. import prompts
 from ..domain import (
     create_recommendation_session,
     domain_session,
@@ -72,52 +74,39 @@ def _prose(name: str, result: dict[str, Any]) -> str | None:
     return next((v for v in result.values() if isinstance(v, str) and v.strip()), None)
 
 
-def _switch_note(state: FlowState) -> str:
-    """Return a hint telling the reply to acknowledge a focus switch to another child (point 2)."""
-    switch = state.get("child_switch") or {}
-    to_name = switch.get("to_name")
-    if not to_name:
-        return ""
-    return (
-        f"\n\nThe conversation focus just switched to {to_name}. Briefly and naturally "
-        "acknowledge at the start of your reply whom you are now talking about."
-    )
+def _gather_text(chunks: Iterable[Any]) -> str:
+    """Reduce a stream of message chunks into the final reply text.
 
-
-def _confirmation_note(state: FlowState) -> str:
-    """Return a hint to acknowledge the outcome of a confirmation gate (point 1/3)."""
-    status = (state.get("confirmation") or {}).get("status")
-    if status == "applied":
-        return "\n\nThe parent just confirmed a profile change; briefly acknowledge that it is saved."
-    if status == "rejected":
-        return (
-            "\n\nThe parent declined the proposed profile change; briefly acknowledge you will "
-            "not save it."
-        )
-    if status == "error":
-        return (
-            "\n\nThe parent confirmed a profile change but saving it did not go through; briefly "
-            "and apologetically let them know it wasn't saved and they can try again -- do NOT "
-            "claim it was saved."
-        )
-    return ""
+    `respond` streams its reply (so `stream_mode="messages"` surfaces tokens to the frontend as
+    they arrive) but still needs the whole string for state + persistence. AIMessageChunks add
+    together into one message; an empty stream yields "".
+    """
+    gathered: Any = None
+    for chunk in chunks:
+        gathered = chunk if gathered is None else gathered + chunk
+    return str(gathered.content) if gathered is not None else ""
 
 
 def _compose(state: FlowState, rendered: str) -> str:
-    system = SystemMessage(
-        content=(
-            "You are the family's reading assistant. Using the prepared material below, write "
-            "one warm, concise reply to the parent's latest message. Do not invent books or "
-            "facts beyond the material; if there is no material, respond helpfully to the "
-            "message itself.\n\n"
-            f"Prepared material:\n{rendered or '(none)'}"
-            f"{_switch_note(state)}"
-            f"{_confirmation_note(state)}"
-            f"{reply_directive(state.get('reply_language'))}"
+    # Python decides the facts; the respond.compose prompt (respond.prompts.yaml) owns the wording,
+    # including the conditional focus-switch / confirmation-outcome notes. reply_directive already
+    # carries a leading blank line for f-string concatenation; strip it since the template spaces
+    # its own blocks.
+    switch = state.get("child_switch") or {}
+    messages = prompts.render(
+        "respond.compose",
+        material=rendered,
+        switch_to_name=switch.get("to_name"),
+        confirmation_status=(state.get("confirmation") or {}).get("status"),
+        reply_directive=reply_directive(state.get("reply_language")).lstrip("\n"),
+    )
+    # Stream (not .invoke) so token chunks reach the frontend via stream_mode="messages";
+    # _gather_text reassembles the full reply for the AIMessage we return to state.
+    return _gather_text(
+        STANDARD.stream_chain().stream(
+            [*messages, *state["messages"]], config=prompts.config("respond.compose")
         )
     )
-    reply = STANDARD.chain().invoke([system, *state["messages"]])
-    return str(reply.content)
 
 
 def _persist_recommendation(

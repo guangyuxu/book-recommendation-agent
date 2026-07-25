@@ -8,9 +8,16 @@ and how an approved record rebuilds clean operations (_child_op).
 
 from __future__ import annotations
 
+from typing import Any, TypedDict
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command
+
 from agent.memory.confirm import (
     apply_confirmation,
     prepare_confirmation,
+    request_confirmation,
     route_after_prepare,
 )
 from agent.memory.confirm_policy import (
@@ -215,3 +222,38 @@ def test_apply_drops_gated_on_reject() -> None:
     out = apply_confirmation(state)
     assert out["confirmation"]["status"] == "rejected"
     assert out["memory_operations"] == [SOFT]
+
+
+# --- request_confirmation: the ONLY interrupt (via a compiled-graph harness) ------------
+# request_confirmation is a non-LLM node whose whole body is a single interrupt() call. We drive
+# it through real LangGraph execution: the first invoke pauses on the interrupt (surfacing the
+# request), and resuming with a value stashes exactly that value into confirmation_decision.
+
+
+class _ConfirmState(TypedDict, total=False):
+    confirmation_request: dict
+    confirmation_decision: Any
+
+
+def _single_node_graph():
+    """Compile a one-node graph around request_confirmation with an in-memory checkpointer."""
+    builder = StateGraph(_ConfirmState)
+    builder.add_node("request_confirmation", request_confirmation)
+    builder.add_edge(START, "request_confirmation")
+    builder.add_edge("request_confirmation", END)
+    return builder.compile(checkpointer=MemorySaver())
+
+
+def test_request_confirmation_pauses_then_stashes_the_resume_value() -> None:
+    graph = _single_node_graph()
+    cfg = {"configurable": {"thread_id": "confirm-1"}}
+    request = {"type": "confirm_profile_writes", "child": {"display_name": "Nia"}}
+
+    paused = graph.invoke({"confirmation_request": request}, cfg)
+    # It paused on the interrupt, surfacing the request payload to the caller.
+    assert "__interrupt__" in paused
+    assert paused["__interrupt__"][0].value == request
+
+    resumed = graph.invoke(Command(resume={"approved": True}), cfg)
+    # The parent's reply becomes the node's confirmation_decision verbatim.
+    assert resumed["confirmation_decision"] == {"approved": True}

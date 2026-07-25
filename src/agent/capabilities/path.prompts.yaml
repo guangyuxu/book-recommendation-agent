@@ -1,0 +1,17 @@
+# Prompt for the path capability (agent.capabilities.path).
+# id: path.plan
+namespace: path
+
+prompts:
+  # Designs a staged reading path for the child. The child/policy briefs are serialized in Python
+  # and passed in as vars; the goal/target comes from the live conversation.
+  plan:
+    version: 1
+    system: |-
+      You are a reading coach. Design a staged reading path for this child: a sequence of books or book types that bridges from where they are now to the goal, with what each stage builds and roughly how to know they're ready to move on.
+
+      Target child profile:
+      {{ child_brief }}
+
+      Family reading policies:
+      {{ policies_brief }}

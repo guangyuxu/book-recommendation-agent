@@ -1,45 +1,49 @@
 """Reading History domain operations: record finished / current / disliked books.
 
-Wraps ReadingHistoryRepository. Each book is upserted by (target child, title) so repeated
-mentions update the same row rather than duplicating it.
+Calls the accounts internal API (`ctx.client`). Each book is upserted by (target child, title):
+the child's history is listed, matched by title, then created (POST) or updated (PATCH) so
+repeated mentions update the same row rather than duplicating it.
 """
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
-from uuid import uuid4
 
 from langchain_core.tools import tool
 
-from ..db import ReadingHistory, ReadingHistoryRepository
-from ._util import merge_unique
-from .context import current, require_child_id
+from ._util import iso_date, merge_unique
+from .context import accounts, current, require_child_id
 
 
-def _parse_date(value: str | None) -> date | None:
-    return date.fromisoformat(value) if value else None
+def _find_by_title(entries: list[dict[str, Any]], title: str) -> dict[str, Any] | None:
+    for e in entries:
+        if e.get("title") == title:
+            return e
+    return None
 
 
-def _upsert(title: str, author: str | None, **fields: Any) -> ReadingHistory:
+def _upsert(title: str, author: str | None, **fields: Any) -> object:
     ctx = current()
-    repo = ReadingHistoryRepository(session=ctx.session)
     child_id = require_child_id()
-    row = repo.get_one_or_none(child_id=child_id, title=title)
-    if row is None:
-        row = ReadingHistory(id=uuid4(), child_id=child_id, title=title, author=author)
-        for key, value in fields.items():
-            if value is not None:
-                setattr(row, key, value)
-        repo.add(row)
+    entries = accounts().list_reading_history(ctx.family_id, child_id)
+    existing = _find_by_title(entries, title)
+
+    body: dict[str, Any] = {}
+    if author is not None:
+        body["author"] = author
+    for key, value in fields.items():
+        if value is not None:
+            body[key] = value
+
+    if existing is None:
+        body["title"] = title
+        accounts().create_reading_history(ctx.family_id, child_id, body)
     else:
-        if author is not None:
-            row.author = author
-        for key, value in fields.items():
-            if value is not None:
-                setattr(row, key, value)
-        repo.update(row)
-    return row
+        # Merge list fields against the existing row (reasons accumulate, deduped).
+        if "reasons" in body:
+            body["reasons"] = merge_unique(existing.get("reasons"), body["reasons"])
+        accounts().update_reading_history(ctx.family_id, child_id, existing["id"], body)
+    return child_id
 
 
 @tool
@@ -58,7 +62,7 @@ def record_finished_book(
 
     finished_at is an ISO date string (YYYY-MM-DD) if known.
     """
-    row = _upsert(
+    child_id = _upsert(
         title,
         author,
         series_name=series_name,
@@ -68,9 +72,9 @@ def record_finished_book(
         reasons=reasons or [],
         parent_note=parent_note,
         child_note=child_note,
-        finished_at=_parse_date(finished_at),
+        finished_at=iso_date(finished_at),
     )
-    return f"Recorded finished book '{title}' for child {row.child_id}."
+    return f"Recorded finished book '{title}' for child {child_id}."
 
 
 @tool
@@ -84,14 +88,14 @@ def record_current_reading(
 
     started_at is an ISO date string (YYYY-MM-DD) if known.
     """
-    row = _upsert(
+    child_id = _upsert(
         title,
         author,
         series_name=series_name,
         status="reading",
-        started_at=_parse_date(started_at),
+        started_at=iso_date(started_at),
     )
-    return f"Recorded current reading '{title}' for child {row.child_id}."
+    return f"Recorded current reading '{title}' for child {child_id}."
 
 
 @tool
@@ -102,7 +106,7 @@ def record_disliked_book(
     parent_note: str | None = None,
 ) -> str:
     """Record that the target child disliked / abandoned a book, with reasons if given."""
-    row = _upsert(
+    child_id = _upsert(
         title,
         author,
         status="abandoned",
@@ -110,4 +114,4 @@ def record_disliked_book(
         reasons=merge_unique(None, reasons),
         parent_note=parent_note,
     )
-    return f"Recorded disliked book '{title}' for child {row.child_id}."
+    return f"Recorded disliked book '{title}' for child {child_id}."

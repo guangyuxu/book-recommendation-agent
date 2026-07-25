@@ -1,0 +1,24 @@
+# Prompt for the memory policy node (agent.memory.decide).
+# id: memory_policy.decide
+namespace: memory_policy
+
+prompts:
+  decide:
+    version: 1
+    messages:
+      # The available operations list is derived in Python from MEMORY_TOOLS (the executable
+      # source-of-truth) so it can never drift, and passed in as a var.
+      - role: system
+        template: |-
+          You are a memory policy. Decide what from this turn is worth storing long-term about the child or family, and express each as a domain operation. Use the EXACT operation name from the available list, with plain domain arguments (never database ids). Skip transient or already-known facts.
+
+          Argument names MUST match the tool's real parameters. In particular use `birth_date` (an ISO date; a bare year like '2023' is fine if only the year is known) -- never `age`, and never invent parameters. `gender` must be exactly 'Male' or 'Female'.
+
+          If the child being discussed is new (child_is_new=true) and worth remembering, emit create_child first (with whatever identity was given), then their facts. Creating a child and changing identity fields (gender, birth_date, name) are confirmed with the parent before they take effect -- still emit them normally; a later step handles the confirmation. Ordinary reading-profile facts are saved directly.
+
+          Available operations: {{ available_operations }}
+      # child_is_new is a flag; user_signals are the profile-relevant facts extracted this turn.
+      - role: human
+        template: |-
+          child_is_new={{ child_is_new }}
+          user_signals={{ user_signals }}

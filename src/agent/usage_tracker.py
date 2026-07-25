@@ -84,6 +84,25 @@ def set_turn_context(ctx: TurnContext) -> None:
     _ctx.set(ctx)
 
 
+def _emit_usage_event(node: str, tokens: int) -> None:
+    """Emit a live `{node, tokens}` custom stream event for the current LLM call.
+
+    Consumed by the frontend via `stream_mode="custom"` (the live half of the usage view). Carries
+    no PII -- a node name and an integer only. Best-effort: `get_stream_writer()` raises when called
+    outside a graph run (e.g. direct-node unit tests), and inside a non-streaming run LangGraph
+    supplies a no-op writer, so this is safe either way.
+    """
+    if not node or tokens <= 0:
+        return
+    try:
+        from langgraph.config import get_stream_writer
+
+        writer = get_stream_writer()
+    except Exception:  # not inside a graph run -- nothing to stream to
+        return
+    writer({"node": node, "tokens": tokens})
+
+
 def _establish_turn_context(state: Mapping[str, Any]) -> None:
     """(Re)establish the billing ContextVar for the current node from state + runtime.
 
@@ -245,10 +264,6 @@ class UsageCallbackHandler(BaseCallbackHandler):
         with self._lock:
             meta = self._meta_by_run.pop(run_id, {})
 
-        ctx = _ctx.get()
-        if ctx is None:
-            return
-
         try:
             gen = response.generations[0][0]
             ai_msg = getattr(gen, "message", None)
@@ -265,6 +280,15 @@ class UsageCallbackHandler(BaseCallbackHandler):
         except (IndexError, AttributeError, TypeError):
             return
 
+        node = _node_from_meta(meta)
+        # Live per-node usage: independent of the DB billing path below, so it fires even before a
+        # TurnContext is established (a streamed run always has one, but this keeps them decoupled).
+        _emit_usage_event(node, inp + out)
+
+        ctx = _ctx.get()
+        if ctx is None:
+            return
+
         _queue.put(
             {
                 "id": uuid4(),
@@ -277,7 +301,7 @@ class UsageCallbackHandler(BaseCallbackHandler):
                 "model_id": model_id,
                 # Strategy injects _strategy; node name comes from LangGraph run metadata.
                 "strategy": meta.get("_strategy", ""),
-                "node": _node_from_meta(meta),
+                "node": node,
                 "input_tokens": inp,
                 "output_tokens": out,
             }

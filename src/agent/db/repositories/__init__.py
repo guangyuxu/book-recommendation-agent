@@ -1,26 +1,17 @@
 """Per-domain repositories: Advanced Alchemy SQLAlchemySyncRepository subclasses, one per table.
 
-Grouped by domain (mirroring db.models), and re-exported here so callers keep a flat import:
+Only the agent-owned tables remain here (book cache, recommendation, token usage); the family /
+child / reading tables moved to the accounts service and are reached over its internal API
+(`agent.accounts_client`), not through repositories. Re-exported here so callers keep a flat import:
 
     from agent.db import session_scope
-    from agent.db.repositories import ChildProfileRepository
-
-    with session_scope() as s:
-        children = ChildProfileRepository(session=s).list_by_family(family_id)
+    from agent.db.repositories import RecommendationSessionRepository
 
 Build them on a session (see db.base.session_scope), one per request -- note `session` is a
 keyword-only argument.
 """
 
 from .book import BookCacheRepository
-from .child import ChildProfileRepository, ChildReadingProfileRepository
-from .family import (
-    FamilyMemberProfileRepository,
-    FamilyMemberRepository,
-    FamilyReadingPolicyRepository,
-    FamilyRepository,
-)
-from .reading import ReadingHistoryRepository
 from .recommendation import (
     RecommendationFeedbackRepository,
     RecommendationItemRepository,
@@ -29,13 +20,6 @@ from .recommendation import (
 from .token_usage import TokenUsageRepository
 
 __all__ = [
-    "FamilyRepository",
-    "FamilyMemberRepository",
-    "FamilyMemberProfileRepository",
-    "ChildProfileRepository",
-    "ChildReadingProfileRepository",
-    "FamilyReadingPolicyRepository",
-    "ReadingHistoryRepository",
     "BookCacheRepository",
     "RecommendationSessionRepository",
     "RecommendationItemRepository",
