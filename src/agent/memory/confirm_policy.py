@@ -130,8 +130,10 @@ def _child_op(record: ChildRecord, creating: bool) -> list[dict[str, Any]]:
         args.pop("aliases", None)
     if creating:
         # create_child requires a display_name; without one the create -- and every child fact
-        # bundled with it -- would fail. Fall back to the first alias, else a neutral placeholder
-        # the parent can rename later, so the confirmed child (and its facts) still persist.
+        # bundled with it -- would fail. The memory-policy prompt is told to always supply a
+        # recognizable display_name (an inferred descriptor when no name was given), so this is a
+        # last-resort net: fall back to the first alias, else a neutral placeholder the parent can
+        # rename later, so the confirmed child (and its facts) still persist.
         if not args.get("display_name"):
             args["display_name"] = record.aliases[0] if record.aliases else "New child"
     elif not args:

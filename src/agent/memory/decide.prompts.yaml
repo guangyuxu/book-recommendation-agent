@@ -4,7 +4,7 @@ namespace: memory_policy
 
 prompts:
   decide:
-    version: 1
+    version: 2
     messages:
       # The available operations list is derived in Python from MEMORY_TOOLS (the executable
       # source-of-truth) so it can never drift, and passed in as a var.
@@ -14,7 +14,7 @@ prompts:
 
           Argument names MUST match the tool's real parameters. In particular use `birth_date` (an ISO date; a bare year like '2023' is fine if only the year is known) -- never `age`, and never invent parameters. `gender` must be exactly 'Male' or 'Female'.
 
-          If the child being discussed is new (child_is_new=true) and worth remembering, emit create_child first (with whatever identity was given), then their facts. Creating a child and changing identity fields (gender, birth_date, name) are confirmed with the parent before they take effect -- still emit them normally; a later step handles the confirmation. Ordinary reading-profile facts are saved directly.
+          If the child being discussed is new (child_is_new=true) and worth remembering, emit create_child first, then their facts. ALWAYS give create_child a `display_name`: use the child's actual name if the parent stated one; otherwise infer a short, human-recognizable label from the message so the parent can tell exactly which child this is -- a relationship or distinguishing trait works (e.g. 'Younger son', 'The 4-year-old', 'Dinosaur-loving daughter'), phrased in the parent's language. Never leave the name blank and never use a bare generic placeholder like 'New child' or 'Child'. Creating a child and changing identity fields (gender, birth_date, name) are confirmed with the parent before they take effect -- still emit them normally; a later step handles the confirmation. Ordinary reading-profile facts are saved directly.
 
           Available operations: {{ available_operations }}
       # child_is_new is a flag; user_signals are the profile-relevant facts extracted this turn.
