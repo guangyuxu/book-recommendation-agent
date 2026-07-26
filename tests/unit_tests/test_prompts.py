@@ -216,6 +216,20 @@ def test_memory_policy_decide_lists_available_operations() -> None:
     assert "child_is_new=True" in msgs[1].content
 
 
+def test_memory_policy_decide_instructs_inferred_display_name() -> None:
+    # A new child must always get a recognizable display_name -- an inferred descriptor when the
+    # parent gave no actual name -- never a bare generic placeholder.
+    system = prompts.render(
+        "memory_policy.decide",
+        available_operations="create_child",
+        child_is_new=True,
+        user_signals=[],
+    )[0].content
+    assert "ALWAYS give create_child a `display_name`" in system
+    assert "infer a short, human-recognizable label" in system
+    assert "New child" in system  # named explicitly as what NOT to emit
+
+
 def test_profile_update_apply_carries_ops_text() -> None:
     msgs = prompts.render(
         "profile_update.apply",
