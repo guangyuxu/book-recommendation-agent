@@ -14,11 +14,10 @@ from typing import Any, cast
 from langchain.messages import AIMessage
 
 from .. import prompts
-from ..capabilities import required_inputs
+from ..capabilities import AMBIENT, required_inputs
 from ..language import Language, normalize_language, reply_directive
 from ..llm import FAST
 from ..state import FlowState
-from .plan import ambient_satisfied
 from .schemas import ClarificationDecision
 
 _structured = FAST.structured(ClarificationDecision)
@@ -35,6 +34,27 @@ _ASK_MORE: dict[Language, str] = {
     "zh-Hans": "可以再多告诉我一些吗？",
     "zh-Hant": "可以再多告訴我一些嗎？",
 }
+
+
+def ambient_satisfied(resource: str, state: FlowState) -> bool:
+    """Whether an ambient resource can be met from state this turn (no capability needed).
+
+    Lives here, not in the planner: `plan` is a pure intent -> capability mapping and never prunes
+    on preconditions, so checking them -- and deciding what an unmet one costs -- stays in this one
+    node. See the AMBIENT vocabulary in `capabilities.registry` for where each resource comes from.
+    """
+    if resource not in AMBIENT:
+        return False
+    u = state.get("understanding") or {}
+    child_known = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))
+    if resource in ("target_child", "reading_profile"):
+        # A profile may be sparse; capabilities degrade gracefully, so a resolved child suffices.
+        return child_known
+    if resource == "policies":
+        return True  # may be empty; only ever an optional input
+    if resource == "books":
+        return bool(u.get("mentioned_books"))
+    return False
 
 
 def _ask(decision: ClarificationDecision, lang: Language) -> dict[str, Any]:

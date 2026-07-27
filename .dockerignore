@@ -41,9 +41,6 @@ CLAUDE.md
 LICENSE
 static
 
-# --- k8s manifests (deploy-time, not runtime) ---
-k8s
-
 # --- Scripts (dev/migration tools, not imported by the app) ---
 scripts
 

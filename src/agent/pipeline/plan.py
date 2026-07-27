@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..capabilities import AMBIENT, for_intent
+from ..capabilities import for_intent
 from ..intents import to_intent
 from ..state import FlowState
 from .schemas import Plan, PlanStep
@@ -29,25 +29,6 @@ def _goals(intents: list[str]) -> list[str]:
             seen.add(cap.name)
             goals.append(cap.name)
     return goals
-
-
-def ambient_satisfied(resource: str, state: FlowState) -> bool:
-    """Whether an ambient resource can be met from state this turn (no capability needed).
-
-    Shared with the clarify node so both reason about availability the same way.
-    """
-    if resource not in AMBIENT:
-        return False
-    u = state.get("understanding") or {}
-    child_known = bool(state.get("target_child_id")) or bool(u.get("child_is_new"))
-    if resource in ("target_child", "reading_profile"):
-        # A profile may be sparse; capabilities degrade gracefully, so a resolved child suffices.
-        return child_known
-    if resource == "policies":
-        return True  # may be empty; only ever an optional input
-    if resource == "books":
-        return bool(u.get("mentioned_books"))
-    return False
 
 
 def plan(state: FlowState) -> dict[str, Any]:

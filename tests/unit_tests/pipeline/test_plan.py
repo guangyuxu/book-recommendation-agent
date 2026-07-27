@@ -2,13 +2,13 @@
 
 Pure functions -- no LLM, no DB. Capabilities are independent (none consumes another's output),
 so `plan` emits a FLAT, unordered list of capabilities with no dependency edges; Execute fans
-them out in parallel. `ambient_satisfied` is the shared precondition check the clarify node
-reuses, so it is pinned here too.
+them out in parallel. The planner never prunes on preconditions: `ambient_satisfied` and its
+tests live with the clarify node, which owns that check.
 """
 
 from __future__ import annotations
 
-from agent.pipeline.plan import _goals, ambient_satisfied, plan
+from agent.pipeline.plan import _goals, plan
 
 
 def _steps(state: dict) -> list[dict]:
@@ -77,40 +77,3 @@ def test_plan_does_not_pull_in_an_unrequested_producer() -> None:
     # discussion alone stays a single step -- recommend is NOT added to "produce" its books.
     steps = _steps(_understanding(["reading_discussion"]))
     assert [s["capability"] for s in steps] == ["discussion"]
-
-
-# --- ambient_satisfied (shared with clarify) ---------------------------------------------
-
-
-def test_ambient_unknown_resource_is_never_satisfied() -> None:
-    assert ambient_satisfied("not_a_resource", {}) is False
-
-
-def test_ambient_target_child_needs_a_resolved_or_new_child() -> None:
-    assert ambient_satisfied("target_child", {"target_child_id": "c1"}) is True
-    assert (
-        ambient_satisfied("target_child", {"understanding": {"child_is_new": True}})
-        is True
-    )
-    assert ambient_satisfied("target_child", {}) is False
-
-
-def test_ambient_reading_profile_follows_child_availability() -> None:
-    assert ambient_satisfied("reading_profile", {"target_child_id": "c1"}) is True
-    assert ambient_satisfied("reading_profile", {}) is False
-
-
-def test_ambient_policies_always_satisfied() -> None:
-    # Policies may be empty; they are only ever an optional input.
-    assert ambient_satisfied("policies", {}) is True
-
-
-def test_ambient_books_requires_mentioned_books() -> None:
-    assert (
-        ambient_satisfied("books", {"understanding": {"mentioned_books": ["Frog"]}})
-        is True
-    )
-    assert (
-        ambient_satisfied("books", {"understanding": {"mentioned_books": []}}) is False
-    )
-    assert ambient_satisfied("books", {}) is False

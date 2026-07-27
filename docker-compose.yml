@@ -2,8 +2,8 @@
 #
 # Postgres / Redis are NOT started by compose — they run on the host 192.168.1.72,
 # and all connection info comes from .env (DATABASE_URL / POSTGRES_URI_CUSTOM / REDIS_URI).
-# The same .env can later be turned into a k8s Secret:
-#   kubectl create secret generic agent-env --from-env-file=.env
+# Kubernetes deployment is NOT owned by this repo: the book-recommendation-deploy repo turns its
+# own .env into the platform Secret (`make k8s-secrets`) and holds the manifests for every service.
 #
 # Usage:
 #   docker compose up --build        # build and start, open http://localhost:8000

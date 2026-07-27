@@ -15,14 +15,15 @@
 #     (.github/workflows/audit.yml); run it by hand with `make audit`.
 #   fixers (manual):  format = fix formatting + imports    spell_fix = fix spelling
 #   Evals are separate (opt-in, cost API tokens) — see the EVALS section.
+#   (k8s / deploy targets are intentionally omitted here — infra is handled separately, in the
+#    book-recommendation-deploy repo, which owns the manifests for the WHOLE platform.)
 # ─────────────────────────────────────────────────────────────────────────────────────
 
 .PHONY: all \
-	lint_ruff lint_format typecheck spell_check audit test coverage \
+	lint_ruff lint_format typecheck spell_check audit test coverage integration \
 	lint check ci format spell_fix \
 	eval eval_classify eval_judge eval_node eval_produce init-db graph \
-	mk-start docker-build mk-load k8s-secret k8s-apply deploy redeploy \
-	k8s-status k8s-logs k8s-pf k8s-down help
+	help
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -38,6 +39,12 @@ all: help
 # Everyday use:  `make check`  (fast, offline: lint + test; lint = ruff + format + mypy + codespell)
 # Before push:   `make ci`     (what GitHub Actions runs verbatim: lint + coverage; fully offline)
 # Tests use sqlite:///:memory: by default; for Postgres set BOOK_AGENT_DATABASE_URL + `make init-db`.
+#
+# TEST LAYOUT (the same law in accounts / agent / service -- see tests/__init__.py):
+#   tests/unit_tests/         fast + offline, tree MIRRORS src/agent/ -- the blocking gate
+#                             (`test`/`coverage` scope HERE, so nothing slow can sneak into `ci`).
+#   tests/integration_tests/  end-to-end journeys, organized by FLOW -- `make integration`, opt-in.
+# LLM output quality is neither: it lives in evals/ (see the EVALS section).
 
 CHECK_PATHS = src/ evals/ eval_regression/ tests/
 
@@ -57,12 +64,17 @@ spell_check:             ## codespell over the repo
 audit:                   ## dependency vulnerability scan (hits the network)
 	uv run pip-audit
 
-test:                    ## pytest suite
-	uv run pytest tests/
+test:                    ## fast unit suite (hermetic; the offline gate)
+	uv run pytest tests/unit_tests
 
-coverage:                ## runs the FULL test suite under coverage + report (this is how `make ci` runs tests)
-	uv run coverage run -m pytest tests/
+coverage:                ## runs the unit suite under coverage + report (this is how `make ci` runs tests)
+	uv run coverage run -m pytest tests/unit_tests
 	uv run coverage report
+
+# pytest exits 5 ("no tests ran") on an empty suite; this one is still a placeholder, so treat 5 as
+# a pass. Identical target text in accounts / service -- see the TEST LAYOUT note above.
+integration:             ## end-to-end journeys vs real infrastructure (opt-in; empty for now)
+	@uv run pytest tests/integration_tests; s=$$?; [ $$s -eq 5 ] && exit 0 || exit $$s
 
 # -- composites --
 lint: lint_ruff lint_format typecheck spell_check  ## all static checks: ruff + format + mypy + codespell (fast, offline)
@@ -116,61 +128,6 @@ graph:                ## Print Mermaid diagram for the main graph (update the me
 		"from agent.graph import graph; print(graph.get_graph(xray=1).draw_mermaid())"
 
 ######################
-# DEPLOY (local minikube)
-######################
-
-IMAGE     ?= book-recommendation-agent
-DEPLOY    ?= book-recommendation-agent
-CONTAINER ?= agent
-K8S_NS    ?= book-agent
-
-# Use a unique tag (timestamp) per build to avoid the "same tag won't update" trap.
-# To pin a fixed tag: make redeploy TAG=0.1.0
-DATE := $(shell date +%Y%m%d-%H%M%S)
-TAG  ?= dev-$(DATE)
-
-mk-start:                ## Start minikube (skip if already running)
-	minikube status >/dev/null 2>&1 || minikube start --driver=docker
-
-docker-build:            ## Build the image $(IMAGE):$(TAG)
-	docker build -t $(IMAGE):$(TAG) .
-
-mk-load: docker-build    ## Load the image into minikube (local image, no registry)
-	minikube image load $(IMAGE):$(TAG)
-
-k8s-secret:              ## Create/update the agent-env Secret from .env
-	@test -f .env || { echo "ERROR: .env not found"; exit 1; }
-	kubectl apply -f k8s/namespace.yaml
-	kubectl create secret generic agent-env --from-env-file=.env -n $(K8S_NS) \
-		--dry-run=client -o yaml | kubectl apply -f -
-
-k8s-apply:               ## Apply the namespace / service / deployment manifests
-	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/service.yaml -f k8s/deployment.yaml
-
-# First-time deploy: create the Secret, apply manifests, build & load the image, roll to the new tag, wait for rollout.
-deploy: mk-start k8s-secret k8s-apply mk-load
-	kubectl set image deploy/$(DEPLOY) $(CONTAINER)=$(IMAGE):$(TAG) -n $(K8S_NS)
-	kubectl rollout status deploy/$(DEPLOY) -n $(K8S_NS) --timeout=120s
-
-# Redeploy after code changes: build -> load -> roll to the new tag -> wait for rollout (most common).
-redeploy: mk-load
-	kubectl set image deploy/$(DEPLOY) $(CONTAINER)=$(IMAGE):$(TAG) -n $(K8S_NS)
-	kubectl rollout status deploy/$(DEPLOY) -n $(K8S_NS) --timeout=120s
-
-k8s-status:              ## Show pod / service status
-	kubectl get pods,svc -n $(K8S_NS) -o wide
-
-k8s-logs:                ## Follow logs from all pods
-	kubectl logs -n $(K8S_NS) -l app=$(DEPLOY) --tail=80 -f
-
-k8s-pf:                  ## Port-forward to local 8000 (http://localhost:8000/docs)
-	kubectl port-forward -n $(K8S_NS) svc/$(DEPLOY) 8000:8000
-
-k8s-down:                ## Delete the entire book-agent namespace (Secret/Deployment/Service)
-	kubectl delete namespace $(K8S_NS) --ignore-not-found
-
-######################
 # HELP
 ######################
 
@@ -180,7 +137,8 @@ help:
 	@echo 'ci                           - faithful GitHub CI mirror: lint + coverage (offline)'
 	@echo 'lint                         - static checks: ruff check + ruff format --diff + mypy + codespell'
 	@echo 'format                       - auto-fix formatting + import order'
-	@echo 'test                         - run all tests under tests/'
+	@echo 'test                         - run the fast unit suite (tests/unit_tests, hermetic)'
+	@echo 'integration                  - run end-to-end journeys (tests/integration_tests; empty for now)'
 	@echo 'coverage                     - run tests with a coverage report'
 	@echo 'spell_check                  - check spelling across the repo'
 	@echo 'spell_fix                    - auto-fix spelling across the repo'
@@ -191,12 +149,5 @@ help:
 	@echo 'eval_judge                   - gate only judge-strategy nodes'
 	@echo 'eval_node NODE=understand    - gate one node by name'
 	@echo 'eval_produce ARGS=--dry-run  - (re)generate co-located thresholds'
-	@echo '--- deploy (minikube) ---'
-	@echo 'deploy                       - first-time deploy: secret + manifests + build/load + rollout'
-	@echo 'redeploy                     - redeploy after code changes: build/load + new tag + rollout (most common)'
-	@echo 'k8s-secret                   - update the Secret from .env (run after editing .env)'
-	@echo 'k8s-status                   - show pod / service status'
-	@echo 'k8s-logs                     - follow pod logs'
-	@echo 'k8s-pf                       - port-forward to localhost:8000'
-	@echo 'k8s-down                     - delete the entire namespace'
-	@echo '  override tag: make redeploy TAG=0.1.0'
+	@echo '--- deploy ---'
+	@echo 'deployment lives in the book-recommendation-deploy repo (compose + k8s for the platform)'

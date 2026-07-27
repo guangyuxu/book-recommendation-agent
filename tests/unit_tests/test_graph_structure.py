@@ -16,6 +16,7 @@ from typing import Annotated, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.pregel import Pregel
 from langgraph.types import Command, interrupt
 
 from agent.graph import graph
@@ -33,6 +34,11 @@ def _edges(compiled) -> set[tuple[str, str]]:
 
 def _nodes(compiled) -> set[str]:
     return set(compiled.get_graph().nodes)
+
+
+def test_graph_is_a_compiled_pregel() -> None:
+    """The module-level export LangGraph Server serves must be a compiled graph, not a builder."""
+    assert isinstance(graph, Pregel)
 
 
 # --- main graph shape: fan-out + join ---------------------------------------------------
