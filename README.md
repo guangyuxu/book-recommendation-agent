@@ -144,7 +144,7 @@ make ci        # run the full CI pipeline locally before pushing
 |---|---|---|
 | 1. Lint | `ruff check .` | style and lint rules |
 | 2. Types | `mypy` | strict type checking (`[tool.mypy]` in pyproject.toml) |
-| 3. Spelling | `codespell README.md src/` | typos in README and source |
+| 3. Spelling | `codespell .` | typos across the repo |
 | 4. Tests | `pytest tests/unit_tests` | unit tests (sqlite in-memory by default) |
 
 CI runs tests against a real Postgres service container. To replicate that locally:
@@ -155,15 +155,30 @@ make init-db
 make test
 ```
 
+### Test layout
+
+```
+tests/
+  unit_tests/           hermetic (no DB, no network); the tree MIRRORS src/agent/ —
+                        pipeline/, memory/, capabilities/, domain/
+  integration_tests/    end-to-end journeys, one file per FLOW (empty for now — see ROADMAP)
+evals/                  LLM OUTPUT QUALITY, also mirroring src/agent/ (opt-in, costs API tokens)
+```
+
+The same law holds in the sibling repos (accounts / service): unit tests mirror the source tree so a
+missing mirror directory is a visible coverage gap, while integration tests are named after the
+business journey they walk, because a journey crosses modules by definition. `make test` / `make ci`
+run only `unit_tests`.
+
 ### Common targets
 
 ```bash
-make test              # unit tests
-make test_watch        # watch mode
+make test              # unit tests (tests/unit_tests)
+make integration       # end-to-end journeys (tests/integration_tests; empty for now)
 make coverage          # unit tests with coverage report
-make lint              # ruff + format diff + mypy
+make lint              # ruff + format diff + mypy + codespell
 make format            # auto-format with ruff
-make spell_check       # codespell on README.md and src/
+make spell_check       # codespell across the repo
 make spell_fix         # auto-fix spelling
 make init-db           # create/update DB schema and tables
 ```
@@ -180,20 +195,19 @@ make eval_produce               # regenerate thresholds
 
 See [`evals/README.md`](evals/README.md) for the full workflow.
 
-## Deployment (minikube)
+## Deployment
+
+Deployment is **not** owned by this repo. The
+[`book-recommendation-deploy`](../book-recommendation-deploy) repo holds the manifests for the whole
+platform (postgres, redis, accounts, agent, service, ui) — Docker Compose for a local stack and
+kustomize for Kubernetes — so the agent is deployed together with the services it talks to, from one
+place:
 
 ```bash
-make deploy     # first-time: build image, apply k8s manifests, create Secret from .env, roll out
-make redeploy   # after code changes: rebuild + rollout (most common)
-make k8s-logs   # follow pod logs
-make k8s-pf     # port-forward to localhost:8000
-make k8s-down   # tear down the entire namespace
+cd ../book-recommendation-deploy
+make up            # local stack via docker compose
+make k8s-apply     # apply the platform manifests (namespace book-rec)
 ```
 
-Kubernetes manifests live in `k8s/`. Secrets are populated from `.env` via `kubectl create secret`. Use `make k8s-secret` after editing `.env` without redeploying the image.
-
-To pin a release tag:
-
-```bash
-make redeploy TAG=1.0.0
-```
+This repo still builds its own image (`docker build .` / the `docker` job in CI) and can be run
+standalone with `docker compose up --build` for an agent-only container.

@@ -86,7 +86,8 @@ REGISTRY: dict[str, Capability] = {
 
 # Resources that come from context/state (load_context + understand), not from a capability's
 # output. The clarify node treats these as preconditions checked against state (see
-# ambient_satisfied): a required input already met from ambient does not trigger a question.
+# pipeline.clarify.ambient_satisfied): a required input already met from ambient does not trigger
+# a question.
 #   target_child      -- resolved via understand/load_context (state["target_child_id"])
 #   reading_profile   -- the child's stored profile (state["children"][id]["reading_profile"])
 #   policies          -- family reading policies (state["policies"])

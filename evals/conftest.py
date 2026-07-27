@@ -25,5 +25,5 @@ requires_eval = pytest.mark.skipif(
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
-    """Match the repo's asyncio-only anyio backend (mirrors tests/conftest.py)."""
+    """Pin anyio to asyncio for any async eval run (the unit suite has no async tests)."""
     return "asyncio"
